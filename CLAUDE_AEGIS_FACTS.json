@@ -1,0 +1,439 @@
+{
+  "project_overview": {
+    "project_name": "Aegis",
+    "full_title": "Aegis: Explainable AI-Assisted Document Scrutiny & Regulatory Verification Platform",
+    "tagline": "Dual-Portal AICTE Scrutiny & Statutory Compliance Engine",
+    "target_regulation": "AICTE Approval Process Handbook (APH 2026-27) & AICTE Act 1987",
+    "core_purpose": "Explainable, decision-oriented regulatory scrutiny platform designed to eliminate cognitive fatigue for AICTE scrutiny officers while giving colleges pre-submission compliance audit feedback.",
+    "primary_stakeholders": [
+      "Technical Education Institutions (Colleges & Universities)",
+      "AICTE Central Scrutiny Directorate (Scrutiny Officers & Committees)",
+      "Appellate & Vigilance Regulatory Authorities"
+    ],
+    "key_differentiation": "Unlike generic cloud portals that act as dumb storage, and unlike black-box generative AI models that hallucinate authenticity, Aegis employs a deterministic, transparent, 24-check validation pipeline with immutable SQLite audit logging, explicit category concordance, and a simplified 1-verdict decision card.",
+    "prototype_status": "IMPLEMENTED AND VERIFIED",
+    "planned_or_incomplete_features": [
+      "Production Optical Character Recognition (OCR) for handwritten/regional language scanned deeds (e.g. Tesseract / Bhashini API)",
+      "Official government database integration (State Bhulekh Land Registries, DigiLocker, National Single Window System - NSWS)",
+      "Cryptographic Public Key Infrastructure (PKI / DSC) Digital Signature validation for issued deeds"
+    ]
+  },
+  "official_sih_details": {
+    "problem_statement_id": "SIH26261",
+    "problem_statement_title": "AI-Powered Application Validation, Document Authentication and Regulatory Compliance Verification",
+    "theme": "Smart Education / Governance & Administrative Reforms",
+    "ps_category": "Software",
+    "official_assignment_status": "USED_IN_PRESENTATION_PROVISIONAL",
+    "note": "ID SIH26261 is used in project presentations; verify against official SIH portal allocation if an alternate ID is formally issued."
+  },
+  "team_details": {
+    "team_name": "Sentinels",
+    "team_id": "NOT PROVIDED",
+    "registered_members": "NOT PROVIDED",
+    "institution": "NOT PROVIDED",
+    "note": "Team registration fields not present in source code; marked NOT PROVIDED per strict verification guidelines."
+  },
+  "technology_stack": {
+    "programming_language": {
+      "name": "Python",
+      "version": "3.13.15",
+      "status": "VERIFIED"
+    },
+    "web_framework": {
+      "name": "Streamlit",
+      "version": "1.44.1",
+      "routing_pattern": "Dynamic st.navigation with st.Page session isolation (eliminates multi-page URL bypass vulnerabilities)",
+      "status": "VERIFIED"
+    },
+    "document_processing": {
+      "name": "PyMuPDF (fitz)",
+      "version": "1.25.3",
+      "role": "Native PDF binary parsing, stream decoding, page-by-page text extraction, font dictionary audit, and revision counting",
+      "status": "VERIFIED"
+    },
+    "database": {
+      "name": "SQLite 3",
+      "role": "Relational persistence with foreign keys, ACID transactions, and WAL journal mode",
+      "database_file": "data/aegis.db",
+      "status": "VERIFIED"
+    },
+    "cryptography_and_security": {
+      "password_hashing": "Bcrypt 4.3.0 (Salted hashing, zero plaintext credentials)",
+      "document_hashing": "FIPS 180-4 SHA-256 (256-bit cryptographic digest per file)",
+      "status": "VERIFIED"
+    },
+    "testing_frameworks": {
+      "unit_and_integration": "Pytest 9.1.1 (36/36 tests passing)",
+      "browser_automation": "Playwright 1.64.1 (Chromium 1248)",
+      "status": "VERIFIED"
+    },
+    "qr_generation": {
+      "name": "qrcode",
+      "version": "8.2",
+      "status": "VERIFIED"
+    },
+    "slide_generation": {
+      "name": "python-pptx",
+      "version": "1.0.2",
+      "status": "VERIFIED"
+    },
+    "ocr_framework": {
+      "name": "None",
+      "status": "NOT IMPLEMENTED IN AEGIS FOUNDATION",
+      "note": "PyMuPDF native text stream extraction is used; no external OCR binary (Tesseract/EasyOCR) is bundled or invoked in aegis-foundation."
+    },
+    "ml_framework": {
+      "name": "None in aegis-foundation",
+      "status": "NOT IMPLEMENTED IN AEGIS FOUNDATION",
+      "note": "AICTE-Validator had .joblib models (scikit-learn Logistic Regression and GBDT); aegis-foundation intentionally replaced them with deterministic, explainable rule sets to avoid black-box hallucinations and maintain statutory GovTech compliance."
+    },
+    "external_cloud_apis": {
+      "status": "ZERO EXTERNAL API CALLS",
+      "cost": "Zero recurring API cost",
+      "privacy": "100% local on-premise execution"
+    }
+  },
+  "ai_capabilities": {
+    "ocr_and_text_extraction": {
+      "implemented": "PARTIALLY IMPLEMENTED",
+      "method": "Native PDF stream text extraction using PyMuPDF (fitz) page.get_text('text')",
+      "source_location": "core/validation/checks/text_extraction.py::run_text_extraction_checks",
+      "input": "PDF bytes or filepath",
+      "output": "extracted_text, page_texts, is_scanned, total_chars, CheckResults (TEXT_EXTRACT_PER_PAGE, TEXT_READABILITY_SCANNED_CHECK)",
+      "verified_by_test": "YES (tests/test_validation_engine.py::test_valid_statutory_text_pdf, tests/test_validation_engine.py::test_scanned_image_only_pdf)",
+      "limitation": "Optical character recognition (OCR) on rasterized scanned images is not implemented; scanned pages (<50 chars) are detected and routed to human review without failing."
+    },
+    "document_type_classification": {
+      "implemented": "RULE-BASED ONLY",
+      "method": "Deterministic token matching against CATEGORY_CONCORDANCE_RULES dictionaries (concordant and discordant keyword tokens)",
+      "source_location": "core/validation/checks/content_rules.py::run_category_filename_concordance_check",
+      "input": "doc_type, filename, extracted_text",
+      "output": "CheckResult (DOC_CATEGORY_FILENAME_MATCH) with status PASS, FAIL, or WARNING",
+      "verified_by_test": "YES (tests/test_demo_scenarios.py::test_scenario_a_mismatched_documents_and_officer_rejection)",
+      "limitation": "Evaluates naming and lexical token concordance; does not use an ML neural classifier."
+    },
+    "filename_and_category_matching": {
+      "implemented": "IMPLEMENTED AND VERIFIED",
+      "method": "Regex cleaning of base filename, token set extraction, and intersection against category discordant and concordant tokens",
+      "source_location": "core/validation/checks/content_rules.py::run_category_filename_concordance_check",
+      "input": "doc_type, filename",
+      "output": "CheckResult flagging discordance (FAIL) or concordance (PASS), with explicit disclaimer authenticity_verified=False",
+      "verified_by_test": "YES (tests/test_demo_scenarios.py, tests/test_simplified_review.py)",
+      "limitation": "Filename concordance does not establish legal authenticity; a mismatch indicates probable misfiling, not necessarily fraud."
+    },
+    "required_field_and_content_validation": {
+      "implemented": "RULE-BASED ONLY",
+      "method": "Versioned Rule Registry (v2026.1.0) keyword frequency evaluation and regex date extraction (DD/MM/YYYY, YYYY-MM-DD)",
+      "source_location": "core/validation/checks/content_rules.py::run_document_content_rules_check, run_date_validity_check",
+      "input": "extracted_text, is_scanned, rules.py definitions",
+      "output": "CheckResults (DOC_TYPE_CONTENT_MATCH, DOC_DATE_VALIDITY)",
+      "verified_by_test": "YES (tests/test_validation_engine.py)",
+      "limitation": "If document is scanned (0 text), records NOT_RUN to avoid false failure; requires human officer inspection of physical stamp."
+    },
+    "cross_document_consistency_checking": {
+      "implemented": "IMPLEMENTED AND VERIFIED",
+      "method": "Cross-referencing SHA-256 hashes, Permanent Institute ID (Code), and Institution Name across companion documents in the same dossier",
+      "source_location": "core/validation/checks/cross_document.py::run_cross_document_checks",
+      "input": "current_sha256, extracted_text, application metadata, companion_docs list",
+      "output": "CheckResults (CROSS_DOC_DUPLICATE_FILES, CROSS_DOC_INSTITUTION_CODE, CROSS_DOC_INSTITUTION_NAME)",
+      "verified_by_test": "YES (tests/test_validation_engine.py::test_cross_document_identity_mismatch, tests/test_assessments.py::test_duplicate_payload_produces_cross_document_issue)",
+      "limitation": "Text-based name comparison uses token normalization; variations in scanned OCR text require manual review."
+    },
+    "pdf_structural_integrity": {
+      "implemented": "IMPLEMENTED AND VERIFIED",
+      "method": "PyMuPDF parsing of PDF header, trailer, catalog, cross-reference table, page tree, encryption flags, and embedded attachments",
+      "source_location": "core/validation/checks/pdf_structure.py::run_pdf_structural_checks",
+      "input": "PDF bytes or filepath",
+      "output": "CheckResults (PDF_PARSE_INTEGRITY, PDF_PAGE_COUNT, PDF_ENCRYPTION_CHECK, PDF_ATTACHMENT_CHECK, PDF_INCREMENTAL_UPDATES, PDF_ACTIVE_CONTENT_CHECK)",
+      "verified_by_test": "YES (tests/test_validation_engine.py::test_corrupt_malformed_pdf, test_password_protected_pdf)",
+      "limitation": "Checks PDF container validity; successful parsing does not prove the document is authentic."
+    },
+    "metadata_inspection": {
+      "implemented": "IMPLEMENTED AND VERIFIED",
+      "method": "PyMuPDF doc.metadata inspection for /Producer, /Creator, /CreationDate, /ModDate, and chronological timestamp inversion",
+      "source_location": "core/validation/checks/pdf_structure.py::_check_metadata_audit, core/validation/checks/forensics.py::run_forensic_heuristic_checks",
+      "input": "PDF metadata dictionary",
+      "output": "CheckResults (PDF_METADATA_AUDIT, FORENSIC_METADATA_INCONSISTENCY)",
+      "verified_by_test": "YES (tests/test_validation_engine.py::test_consumer_tool_and_inverted_timestamps)",
+      "limitation": "Scanning hardware frequently omits metadata or has uncalibrated system clocks, which may cause false timestamp warnings."
+    },
+    "duplicate_detection_and_file_hashes": {
+      "implemented": "IMPLEMENTED AND VERIFIED",
+      "method": "Cryptographic hashlib.sha256 digest calculation and collision matching across application documents in SQLite",
+      "source_location": "core/validation/checks/file_integrity.py::run_file_integrity_checks",
+      "input": "file_bytes, existing_hashes list from SQLite",
+      "output": "CheckResults (FILE_SHA256_DIGEST, FILE_DUPLICATE_CHECK)",
+      "verified_by_test": "YES (tests/test_validation_engine.py::test_duplicate_file_detection)",
+      "limitation": "Detects identical binary payloads; a re-saved or re-scanned document has a different hash and is not flagged by hash comparison alone."
+    },
+    "document_tampering_and_forensic_heuristics": {
+      "implemented": "RULE-BASED ONLY",
+      "method": "Pattern scanning for online consumer PDF utilities (Canva, Smallpdf, iLovePDF, Sejda), counting %%EOF incremental revision sections, embedded font subset auditing, and scanning for active /JavaScript or /Launch actions",
+      "source_location": "core/validation/checks/forensics.py, core/validation/checks/pdf_structure.py",
+      "input": "PDF raw bytes, metadata, font dictionaries",
+      "output": "CheckResults (FORENSIC_CONSUMER_TOOL, PDF_INCREMENTAL_UPDATES, PDF_ACTIVE_CONTENT_CHECK, FORENSIC_FONT_AUDIT)",
+      "verified_by_test": "YES (tests/test_validation_engine.py::test_incremental_updates_and_active_content)",
+      "limitation": "These are advisory heuristic flags. Consumer tools or incremental updates frequently occur in legitimate administrative PDF handling."
+    },
+    "llm_or_external_ai_integration": {
+      "implemented": "NOT IMPLEMENTED",
+      "method": "None. Aegis does not call OpenAI, Anthropic, Gemini, or local LLMs.",
+      "source_location": "N/A",
+      "input": "N/A",
+      "output": "N/A",
+      "verified_by_test": "N/A",
+      "limitation": "Deliberately excluded to eliminate hallucinations, token costs, and privacy leaks in government scrutiny workflows."
+    },
+    "automated_finding_summaries": {
+      "implemented": "IMPLEMENTED AND VERIFIED",
+      "method": "Deterministic mapping of check failures to a concise 4-field structure: Expected, Uploaded, Finding, Action",
+      "source_location": "core/validation/assessment.py::AssessmentAggregator.aggregate_application_run, views/validation_view.py",
+      "input": "Raw check execution results",
+      "output": "Actionable findings list formatted for human decision-making",
+      "verified_by_test": "YES (tests/test_simplified_review.py::test_2_application_with_real_issue_shows_exact_file_problem_evidence_action)",
+      "limitation": "Limited to the 24 deterministic check types implemented in the engine."
+    },
+    "application_verdict_aggregation": {
+      "implemented": "IMPLEMENTED AND VERIFIED",
+      "method": "Conservative hierarchical verdict computation (ACTION_REQUIRED > CHECK_INCOMPLETE > MANUAL_REVIEW_REQUIRED > CLEAR)",
+      "source_location": "core/validation/assessment.py::_compute_application_verdict",
+      "input": "Dossier validation run results and mandatory document checklist status",
+      "output": "Single prominent verdict: CLEAR, ACTION REQUIRED, MANUAL REVIEW REQUIRED, or CHECK INCOMPLETE",
+      "verified_by_test": "YES (tests/test_assessments.py::test_conservative_application_aggregation, tests/test_simplified_review.py)",
+      "limitation": "Operates strictly over completed automated checks; CLEAR does not guarantee authenticity."
+    }
+  },
+  "validation_pipeline": {
+    "stages": [
+      {
+        "stage_number": 1,
+        "name": "File Integrity & Security",
+        "checks_count": 7,
+        "source": "core/validation/checks/file_integrity.py",
+        "description": "Validates extension allowlist, non-empty byte length, magic byte signatures (%PDF-), 15MB file size boundary, SHA-256 digest, and path traversal guards."
+      },
+      {
+        "stage_number": 2,
+        "name": "PDF Structure & Diagnostics",
+        "checks_count": 7,
+        "source": "core/validation/checks/pdf_structure.py",
+        "description": "Parses PDF object catalog and trailer via PyMuPDF; audits page count, encryption/password lock, metadata dictionary, embedded attachments, incremental revisions (%%EOF), and active executable scripts (/JavaScript)."
+      },
+      {
+        "stage_number": 3,
+        "name": "Text Extraction & Readability",
+        "checks_count": 2,
+        "source": "core/validation/checks/text_extraction.py",
+        "description": "Extracts text page-by-page. Digital PDFs with text streams pass; scanned image PDFs (<50 characters) are gracefully flagged as REVIEW_REQUIRED with an explicit notice that land deeds and notarized affidavits are frequently scanned."
+      },
+      {
+        "stage_number": 4,
+        "name": "Forensic Heuristics",
+        "checks_count": 3,
+        "source": "core/validation/checks/forensics.py",
+        "description": "Scans metadata for online consumer PDF utilities (Canva, Smallpdf), checks for inverted/future modification timestamps, and audits embedded font dictionaries across pages."
+      },
+      {
+        "stage_number": 5,
+        "name": "Document Content & Rule Registry",
+        "checks_count": 2,
+        "source": "core/validation/checks/content_rules.py",
+        "description": "Evaluates document category concordance (e.g. Land Title vs Affiliation Letter) and verifies versioned statutory keywords from Rule Registry (v2026.1.0) along with statutory date plausibility."
+      },
+      {
+        "stage_number": 6,
+        "name": "Cross-Document Consistency",
+        "checks_count": 3,
+        "source": "core/validation/checks/cross_document.py",
+        "description": "Audits SHA-256 payload collisions across application categories, checks Permanent Institute Code consistency, and verifies normalized Institution Name across companion documents."
+      }
+    ],
+    "total_granular_checks": 24,
+    "execution_time_per_document": "< 100 ms",
+    "execution_time_per_dossier": "< 500 ms"
+  },
+  "system_architecture": {
+    "pattern": "Multi-Tenant GovTech Architecture with Role-Based Access Control and Append-Only Audit Logging",
+    "data_flow": "Institutional Upload (Screen B) -> Binary Security Gate -> Validation Pipeline (24 Checks) -> SQLite Persistence (validation_runs, validation_checks) -> Aggregation Layer (Verdict & 4 Assessments) -> Officer Review Console (Screens C, D, E) -> Statutory Order (Approve/Reject) -> Immutable Event Ledger (audit_events)",
+    "database_tables": [
+      "institutions",
+      "users",
+      "applications",
+      "documents",
+      "clarifications",
+      "audit_events",
+      "validation_runs",
+      "validation_checks",
+      "finding_dispositions"
+    ]
+  },
+  "college_workflow": {
+    "login": "Bcrypt-authenticated login via / route using institution email and secure password.",
+    "dashboard_cards": [
+      "APPLY (Initialize new application or continue active draft)",
+      "APPLICATION STATUS (Track completeness, review stages, and final outcomes)",
+      "NOTIFICATIONS (Respond to statutory clarification inquiries with supplementary evidence)"
+    ],
+    "document_upload": "Selects document type from mandatory checklist (Land Title Certificate, Building Plan Approval, AICTE Affidavit 1, Fire Safety Certificate) and uploads PDF/image (max 15MB).",
+    "real_time_guidance": "Shows instant plain-language guidance under each document (e.g. mismatch alert, scanned deed notice, duplicate warning) without exposing internal technical telemetry.",
+    "draft_management": "Can download, delete, or replace documents while application is in DRAFT status.",
+    "final_submission": "Submits dossier when completeness reaches 100%; application transitions to SUBMITTED and locks applicant modifications."
+  },
+  "officer_workflow": {
+    "login": "Bcrypt-authenticated login via / route using official admin email.",
+    "dashboard_cards": [
+      "APPLICATIONS (Active scrutiny queue with pending count)",
+      "ADD APPLICATION (Direct officer intake for manual registrations)",
+      "LOGS (Statutory immutable audit trail with event count)"
+    ],
+    "queue_management": "Two-panel queue layout with sort by submission date/name/status, filter by status (SUBMITTED, UNDER_SCRUTINY, etc.), and keyword search.",
+    "individual_review": {
+      "application_header": "Application number, college name, permanent code, submission date, and institutional context remarks.",
+      "summary_verdict_card": "Compact Document Verification box showing X/Y uploaded, M/Y matched, result status (CLEAR vs ISSUE FOUND).",
+      "actionable_findings": "If issues exist, shows prominent cards displaying Expected, Uploaded, Finding, and Action.",
+      "document_table": "Compact list of uploaded documents with direct download buttons.",
+      "technical_details_expander": "Single collapsed section preserving all 24 granular checks, expected vs observed values, raw JSON evidence, and finding disposition forms."
+    },
+    "statutory_decision": {
+      "approve": "1-click approval with optional official remarks; updates status to APPROVED and logs audit event.",
+      "reject": "Rejection requires mandatory written statutory justification; updates status to REJECTED and logs audit event.",
+      "clarify": "Issues formal clarification inquiry with specific question and requested evidence; application transitions to CLARIFICATION_REQUESTED."
+    }
+  },
+  "demo_scenarios": {
+    "scenario_a": {
+      "title": "Scenario A: Incorrect Document Mismatch & Statutory Rejection",
+      "college_action": "Apex Institute representative uploads Affiliation_Letter.pdf under the mandatory LAND_TITLE_CERTIFICATE category, alongside correct companion documents.",
+      "detection_mechanism": "core/validation/checks/content_rules.py flags 'affiliation' as a discordant token for category LAND_TITLE_CERTIFICATE.",
+      "displayed_verdict": "ISSUE FOUND (4/4 uploaded, 3/4 matched, 1 document needs attention).",
+      "displayed_finding": {
+        "expected": "Land Title Certificate",
+        "uploaded": "Affiliation_Letter.pdf",
+        "finding": "The uploaded filename/category does not match the expected document.",
+        "action": "Review document"
+      },
+      "officer_action": "Scrutiny officer inspects finding, enters mandatory rejection justification: 'Application rejected due to statutory document mismatch: Affiliation Letter uploaded under Land Title requirement.', and clicks REJECT APPLICATION.",
+      "persisted_state": "Application status updated to REJECTED; audit event APPLICATION_REJECTED permanently recorded.",
+      "evidence_files": [
+        "browser_evidence/demo_08_scenario_a_officer_mismatch_detected.png",
+        "browser_evidence/demo_09_scenario_a_officer_rejection_recorded.png",
+        "browser_evidence/presentation_crops/scenario_a_mismatch_card.png",
+        "browser_evidence/presentation_crops/scenario_a_rejection_order.png"
+      ]
+    },
+    "scenario_b": {
+      "title": "Scenario B: Correct Statutory Dossier & 1-Click Approval",
+      "college_action": "Apex Institute representative uploads 4 valid statutory documents: land_title_deed.pdf, building_plan_approval.pdf, aicte_affidavit_1.pdf, and fire_safety_certificate.pdf.",
+      "detection_mechanism": "Validation engine verifies all 4 files contain concordant tokens, pass format/integrity checks, and pass keyword compliance.",
+      "displayed_verdict": "CLEAR (4/4 uploaded, 4/4 matched, No document mismatches detected).",
+      "displayed_finding": "0 issues detected; displays confirmation that all automated checks passed.",
+      "officer_action": "Scrutiny officer downloads and inspects documents, enters approval remarks: 'All statutory land, building, affidavit, and fire certificates verified and cleared.', and clicks APPROVE APPLICATION.",
+      "persisted_state": "Application status updated to APPROVED; audit event APPLICATION_APPROVED permanently recorded.",
+      "evidence_files": [
+        "browser_evidence/demo_12_scenario_b_officer_clean_verdict.png",
+        "browser_evidence/demo_13_scenario_b_officer_approval_confirmed.png",
+        "browser_evidence/presentation_crops/scenario_b_clean_card.png",
+        "browser_evidence/presentation_crops/scenario_b_approval_order.png"
+      ]
+    }
+  },
+  "test_evidence": {
+    "total_tests_discovered": 36,
+    "total_tests_passing": 36,
+    "total_tests_failed": 0,
+    "total_tests_skipped": 0,
+    "execution_command": "python -m pytest tests/ -v",
+    "execution_time": "41.91 seconds",
+    "test_files": [
+      {
+        "file": "tests/test_assessments.py",
+        "tests_count": 8,
+        "coverage": "Assessment aggregation, scanned image handling, active content detection, duplicate payload detection, conservative aggregation."
+      },
+      {
+        "file": "tests/test_demo_scenarios.py",
+        "tests_count": 2,
+        "coverage": "End-to-end execution of Scenario A (mismatch rejection) and Scenario B (clean approval)."
+      },
+      {
+        "file": "tests/test_e2e_workflow.py",
+        "tests_count": 8,
+        "coverage": "Full regulatory lifecycle, multi-tenant isolation (Apex vs Beacon), unauthenticated route guards, persistence across restart, audit trail immutability."
+      },
+      {
+        "file": "tests/test_simplified_review.py",
+        "tests_count": 8,
+        "coverage": "1-verdict banner, 4-field actionable findings, incomplete check guards, cross-document discrepancy identification, applicant feedback."
+      },
+      {
+        "file": "tests/test_validation_engine.py",
+        "tests_count": 10,
+        "coverage": "Zero-byte file rejection, malformed PDF rejection, password protection detection, scanned PDF handling, SHA-256 duplicate detection, consumer tool detection, active script detection, officer dispositions."
+      }
+    ]
+  },
+  "limitations_and_risks": {
+    "demonstrated_limitations": [
+      "No OCR engine is bundled in aegis-foundation; scanned image PDFs (<50 text characters) cannot be parsed for text keywords and are routed to human review.",
+      "Filename/category concordance does not establish physical authenticity; a correctly named PDF might contain fraudulent or altered contents.",
+      "Timestamp anomalies may reflect misconfigured scanning device clocks rather than malicious backdating.",
+      "The prototype uses synthetic demo PDF files rather than real institutional legal records.",
+      "The system is a reference architecture and is not connected to live AICTE or state government production databases."
+    ],
+    "potential_risks": [
+      "Over-reliance on automated checks by fatigue-prone officers if clear disclaimers are not emphasized.",
+      "Regional variances in document naming across Indian states (e.g. Satbara 7/12 in Maharashtra, Patta in Tamil Nadu, Khasra in UP) require ongoing Rule Registry maintenance.",
+      "Scanned deeds with complex multi-page boundary sketches require high-resolution visual inspection tools."
+    ],
+    "defensible_presentation_claims": [
+      "CLAIM: Aegis slashes cognitive fatigue by replacing 24 diagnostic parameters with a concise 1-verdict summary.",
+      "CLAIM: Aegis provides instant pre-submission compliance audit feedback to colleges, preventing avoidable administrative rejections.",
+      "CLAIM: Aegis operates 100% locally with zero cloud API token costs, ensuring complete institutional data privacy.",
+      "DO NOT CLAIM: Aegis detects 100% of forged documents with AI.",
+      "DO NOT CLAIM: Aegis is officially approved or deployed by AICTE.",
+      "DO NOT CLAIM: Aegis autonomously approves or rejects college applications."
+    ]
+  },
+  "references": {
+    "statutory_references": [
+      {
+        "title": "AICTE Approval Process Handbook (APH 2026-27)",
+        "issuing_body": "All India Council for Technical Education, New Delhi",
+        "role_in_project": "Governing regulatory standard for mandatory document checklists, land norms, and affidavit formats."
+      },
+      {
+        "title": "All India Council for Technical Education Act, 1987 (Act No. 52 of 1987)",
+        "issuing_body": "Parliament of India",
+        "role_in_project": "Statutory basis for technical education regulation and coordinated development."
+      },
+      {
+        "title": "National Education Policy (NEP 2020) — §18 Regulatory Architecture",
+        "issuing_body": "Ministry of Education, Government of India",
+        "role_in_project": "Statutory objective for 'Light but Tight' transparent, technology-enabled, single-window evaluation."
+      }
+    ],
+    "technical_standards": [
+      {
+        "title": "ISO 32000-1 / ISO 32000-2 Document Management Standards",
+        "issuing_body": "International Organization for Standardization",
+        "role_in_project": "PDF cross-reference, stream encoding, and metadata specifications."
+      },
+      {
+        "title": "NIST FIPS PUB 180-4: Secure Hash Standard (SHS)",
+        "issuing_body": "National Institute of Standards and Technology",
+        "role_in_project": "SHA-256 cryptographic specification for tamper-proof document hashing."
+      }
+    ]
+  },
+  "presentation_recommendations": {
+    "slide_limit": 6,
+    "structure": [
+      "Slide 1: Title Page & Mandatory SIH Details",
+      "Slide 2: Proposed Solution, 4 Core Value Pillars & Implemented Tech Stack",
+      "Slide 3: Technical Approach (3-Phase Architecture Workflow Diagram)",
+      "Slide 4: Feasibility & Viability (Scenario A Mismatch vs Scenario B Clean Pass UI Crops & Competitor Matrix)",
+      "Slide 5: Impact & Benefits (Key Stakeholders, NEP 2020 §18, and 4 KPI Metric Pills)",
+      "Slide 6: Research, References, Scannable QR Code & Prototype Access Steps"
+    ]
+  }
+}
