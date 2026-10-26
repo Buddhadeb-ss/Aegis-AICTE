@@ -24,9 +24,12 @@ from views.theme import (
     render_metrics_ribbon,
     render_wizard_step_bar,
     render_empty_state,
-    render_status_badge
+    render_status_badge,
+    render_compliance_pillar_meter,
+    render_version_differential_card
 )
 from views.validation_view import render_applicant_feedback_panel
+from views.inspector import render_pdf_inspector_ui
 
 
 def render_college_dashboard(user: Dict[str, Any], apps: List[Dict[str, Any]], notifications: List[Dict[str, Any]]):
@@ -126,8 +129,23 @@ def render_college_dashboard(user: Dict[str, Any], apps: List[Dict[str, Any]], n
             st.query_params["view"] = "notifications"
             st.rerun()
 
-    # Recent Overview Section
+    # 4-Pillar Statutory Compliance Gauge
     st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
+    st.markdown("### 🏛️ Institutional Compliance Pillars (APH 2026-27 Norms)")
+    latest_app_id = apps[0]["id"] if apps else None
+    latest_docs = []
+    mandatory_reqs = MANDATORY_DOCUMENTS["NEW_TECHNICAL_INSTITUTION"]
+    if latest_app_id:
+        try:
+            pkt = ApplicationService.get_application_details(latest_app_id, user)
+            latest_docs = pkt.get("documents", [])
+            mandatory_reqs = pkt.get("mandatory_checklist", mandatory_reqs)
+        except Exception:
+            latest_docs = []
+    render_compliance_pillar_meter(latest_docs, mandatory_reqs)
+
+    # Recent Overview Section
+    st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
     st.markdown("### 📋 Institutional Dossier Activity")
 
     if not apps:
@@ -545,6 +563,9 @@ def render_dossier_detail(user: Dict[str, Any]):
                                 st.error(str(e))
                 # Render the 7-field structured finding feedback
                 render_applicant_feedback_panel(d)
+
+                with st.expander(f"🔬 Inspect PDF Anatomy & Metadata: {d['filename']}", expanded=False):
+                    render_pdf_inspector_ui(d)
     else:
         render_empty_state(
             icon="📄",
@@ -563,6 +584,21 @@ def render_dossier_detail(user: Dict[str, Any]):
                 st.rerun()
             except ValueError as ve:
                 st.error(str(ve))
+
+    # Superseded Document Versions & Change History
+    doc_versions = packet.get("document_versions", [])
+    if doc_versions:
+        st.markdown("<div style='margin-top: 18px;'></div>", unsafe_allow_html=True)
+        with st.expander("📑 Superseded Document Versions & Audit Differential", expanded=False):
+            st.caption("Historical revisions of statutory certificates replaced or updated during authoring or clarification:")
+            for v in doc_versions:
+                cur_doc = next((d for d in docs if d["document_type"] == v["document_type"]), None)
+                if cur_doc:
+                    render_version_differential_card(v, cur_doc)
+                else:
+                    with st.container(border=True):
+                        st.markdown(f"**{v['document_type']}** · v{v['version_number']} (Archived {v['archived_at'][:19]})")
+                        st.write(f"Archived Filename: `{v['filename']}` · File Size: {v['file_size']/1024:.1f} KB")
 
     # Audit Trail Timeline Expander
     st.markdown("<div style='margin-top: 18px;'></div>", unsafe_allow_html=True)

@@ -92,6 +92,25 @@ def init_db(db_path: Optional[str] = None):
             FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS document_versions (
+            id VARCHAR(64) PRIMARY KEY,
+            document_id VARCHAR(64) NOT NULL,
+            application_id VARCHAR(64) NOT NULL,
+            document_type VARCHAR(64) NOT NULL,
+            filename VARCHAR(256) NOT NULL,
+            stored_path VARCHAR(512) NOT NULL,
+            file_size INTEGER NOT NULL,
+            sha256_hash VARCHAR(64) NOT NULL,
+            mime_type VARCHAR(64) NOT NULL,
+            version_number INTEGER NOT NULL,
+            validation_status VARCHAR(32) DEFAULT 'PENDING',
+            findings_summary TEXT,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            archived_by VARCHAR(128) NOT NULL,
+            FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS clarifications (
             id VARCHAR(64) PRIMARY KEY,
             application_id VARCHAR(64) NOT NULL,
@@ -194,6 +213,8 @@ def init_db(db_path: Optional[str] = None):
         CREATE INDEX IF NOT EXISTS idx_apps_inst ON applications(institution_id);
         CREATE INDEX IF NOT EXISTS idx_docs_app ON documents(application_id);
         CREATE INDEX IF NOT EXISTS idx_clarif_app ON clarifications(application_id);
+        CREATE INDEX IF NOT EXISTS idx_doc_versions_app ON document_versions(application_id);
+        CREATE INDEX IF NOT EXISTS idx_doc_versions_type ON document_versions(application_id, document_type);
         CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_events(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_val_runs_doc ON validation_runs(document_id);
         CREATE INDEX IF NOT EXISTS idx_val_runs_app ON validation_runs(application_id);
@@ -214,6 +235,7 @@ def seed_foundation(db_path: Optional[str] = None, force_reset: bool = False):
             conn.execute("DELETE FROM validation_runs")
             conn.execute("DELETE FROM clarifications")
             conn.execute("DELETE FROM forensic_results")
+            conn.execute("DELETE FROM document_versions")
             conn.execute("DELETE FROM documents")
             conn.execute("DELETE FROM applications")
             conn.execute("DELETE FROM users")

@@ -100,3 +100,28 @@
     - Executed full pytest suite: **48/48 tests passed (100% pass rate) in 44.15s** with 0 failures, 0 errors, 0 warnings.
     - Executed full Playwright Chromium browser verification: all 12 wireframe scenarios verified against live Streamlit server, refreshing 14 screenshots in `browser_evidence/`.
 - **Result:** Complete product transformation verified across design, usability, validation, persistence, and security.
+
+---
+
+### Iteration 8 — Advanced Compliance Capabilities & Simulation Suite
+- **Timestamp:** 2026-10-26T11:32:00+05:30
+- **Action:**
+  - **Document Versioning & Archival Differential (`core/db.py`, `core/auth.py`, `views/theme.py`):**
+    - Created `document_versions` table and indexes.
+    - Updated `ApplicationService.upload_document` to archive superseded documents on replacement instead of deleting.
+    - Implemented `render_version_differential_card` to show size delta, hash change, and validation progress.
+    - Added dedicated Tab 5 in Screen E and expander in College Dossier Detail.
+  - **Official Printable Gazette Scrutiny Order (`views/officer.py`):**
+    - Implemented `generate_printable_scrutiny_order_html` with Government header, statutory determination decree, and `@media print` print-to-PDF formatting.
+    - Added in-browser print preview iframe and HTML order download button in Screen E Tab 4.
+  - **In-Browser Deep PDF Structure & Forensics Inspector (`views/inspector.py`):**
+    - Built comprehensive inspector extracting page count, header format, active scripts, encrypted flags, metadata authoring tool fingerprints, and page-by-page extracted text viewer with statutory search filter.
+  - **Institutional Compliance Pillar Meter (`views/theme.py`, `views/college.py`):**
+    - Added 4-pillar institutional readiness radar on college dashboard (Land & Title, Affidavits, Safety & Clearances, Dossier Integrity).
+  - **Interactive Scenario Simulation Suite (`core/scenarios.py`, `views/public.py`, `views/officer.py`):**
+    - Built 1-click synthetic evaluation scenarios (Scenario 1: Deficient Application, Scenario 2: Clean Compliance Pass, Scenario 3: Clarification Round).
+    - Added simulation expander toolbar to both Landing Page and Officer Directorate Dashboard.
+  - **Automated Verification:**
+    - Created `tests/test_new_features.py` with 6 automated tests.
+    - Executed full pytest suite: **54/54 tests passed (100% pass rate in 51.36s)** with 0 failures, 0 errors, 0 warnings.
+- **Result:** All advanced features verified, tested, and integrated.

@@ -11,6 +11,7 @@ Directly implements Wireframe 1 (AICTE Portal) with modern governance aesthetics
 import streamlit as st
 from core.auth import AuthService
 from views.theme import render_header, render_footer, apply_custom_css
+from core.scenarios import load_scenario_deficient, load_scenario_clean, load_scenario_clarification
 
 
 def render_landing_and_login():
@@ -75,6 +76,47 @@ def render_landing_and_login():
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # Quick Simulation Suite on Landing Page
+    with st.expander("🎯 One-Click Live Evaluation Scenarios (For SIH Judges & Evaluators)", expanded=False):
+        st.markdown("Instantly initialize and inspect authentic regulatory compliance scenarios without manual form entry:")
+        c_p1, c_p2, c_p3 = st.columns(3)
+        with c_p1:
+            st.markdown("**Scenario 1: Deficient Application**")
+            st.caption("Building plan naming anomaly & pending municipal demarcation. Generates 7-field findings.")
+            if st.button("▶ Evaluate Deficient Dossier", key="pub_btn_load_sc1", use_container_width=True):
+                res = load_scenario_deficient()
+                officer = AuthService.authenticate("admin@aicte.gov.in", "AegisAdmin@2026#Secure", expected_role="AICTE_SCRUTINY_OFFICER")
+                st.session_state["user"] = officer
+                st.session_state["officer_view"] = "review"
+                st.session_state["active_app_id"] = res["application_id"]
+                st.query_params["view"] = "review"
+                st.query_params["app_id"] = res["application_id"]
+                st.rerun()
+
+        with c_p2:
+            st.markdown("**Scenario 2: Clean Compliance Dossier**")
+            st.caption("100% compliant application with all 4 mandatory documents passing all rule checks.")
+            if st.button("▶ Evaluate Clean Dossier", key="pub_btn_load_sc2", use_container_width=True):
+                res = load_scenario_clean()
+                officer = AuthService.authenticate("admin@aicte.gov.in", "AegisAdmin@2026#Secure", expected_role="AICTE_SCRUTINY_OFFICER")
+                st.session_state["user"] = officer
+                st.session_state["officer_view"] = "review"
+                st.session_state["active_app_id"] = res["application_id"]
+                st.query_params["view"] = "review"
+                st.query_params["app_id"] = res["application_id"]
+                st.rerun()
+
+        with c_p3:
+            st.markdown("**Scenario 3: Active Clarification Round**")
+            st.caption("Application undergoing formal clarification request with pending surveyor proof.")
+            if st.button("▶ Evaluate Clarification Response", key="pub_btn_load_sc3", use_container_width=True):
+                res = load_scenario_clarification()
+                college = AuthService.authenticate("principal@apextech.edu", "ApexPrincipal@2026#Secure", expected_role="COLLEGE_REPRESENTATIVE")
+                st.session_state["user"] = college
+                st.session_state["college_view"] = "notifications"
+                st.query_params["view"] = "notifications"
+                st.rerun()
 
     # Initialize public view state
     if "public_login_role" not in st.session_state:

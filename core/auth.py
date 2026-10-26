@@ -273,6 +273,16 @@ class ApplicationService:
             )
             clarifs = [dict(c) for c in clarif_cur.fetchall()]
 
+            ver_cur = conn.execute(
+                """
+                SELECT * FROM document_versions
+                WHERE application_id = ?
+                ORDER BY version_number ASC, archived_at DESC
+                """,
+                (app_id,)
+            )
+            doc_versions = [dict(v) for v in ver_cur.fetchall()]
+
         # Compute document completeness
         mandatory = MANDATORY_DOCUMENTS.get(app["category"], MANDATORY_DOCUMENTS["NEW_TECHNICAL_INSTITUTION"])
         present_types = {d["document_type"] for d in docs}
@@ -289,6 +299,7 @@ class ApplicationService:
         return {
             "application": app,
             "documents": docs,
+            "document_versions": doc_versions,
             "clarifications": clarifs,
             "mandatory_checklist": mandatory,
             "missing_documents": missing_docs,
@@ -296,6 +307,22 @@ class ApplicationService:
             "validation_summary": val_summary,
             "audit_trail": audit_trail
         }
+
+    @staticmethod
+    def get_document_versions(app_id: str, doc_type: Optional[str] = None, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns archival version history for documents in an application."""
+        with get_db(db_path) as conn:
+            if doc_type:
+                cur = conn.execute(
+                    "SELECT * FROM document_versions WHERE application_id = ? AND document_type = ? ORDER BY version_number ASC",
+                    (app_id, doc_type)
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT * FROM document_versions WHERE application_id = ? ORDER BY version_number ASC",
+                    (app_id,)
+                )
+            return [dict(r) for r in cur.fetchall()]
 
     @staticmethod
     def upload_document(
@@ -356,8 +383,40 @@ class ApplicationService:
         with get_db(db_path) as conn:
             # If replacing an existing document of the same category in DRAFT or CLARIFICATION_REQUESTED
             if app["status"] in ["DRAFT", "CLARIFICATION_REQUESTED"]:
-                old_cur = conn.execute("SELECT id FROM documents WHERE application_id = ? AND document_type = ?", (app_id, doc_type))
-                for old_r in old_cur.fetchall():
+                old_cur = conn.execute(
+                    """
+                    SELECT d.*, vr.status as val_status, vr.summary_text
+                    FROM documents d
+                    LEFT JOIN validation_runs vr ON vr.document_id = d.id
+                    WHERE d.application_id = ? AND d.document_type = ?
+                    ORDER BY d.uploaded_at DESC
+                    """,
+                    (app_id, doc_type)
+                )
+                old_docs = old_cur.fetchall()
+                for old_r in old_docs:
+                    v_count_row = conn.execute(
+                        "SELECT COUNT(*) as cnt FROM document_versions WHERE application_id = ? AND document_type = ?",
+                        (app_id, doc_type)
+                    ).fetchone()
+                    version_num = (v_count_row["cnt"] if v_count_row else 0) + 1
+                    ver_id = f"ver_{uuid.uuid4().hex[:12]}"
+                    conn.execute(
+                        """
+                        INSERT INTO document_versions (
+                            id, document_id, application_id, document_type, filename,
+                            stored_path, file_size, sha256_hash, mime_type, version_number,
+                            validation_status, findings_summary, uploaded_at, archived_at, archived_by
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                        """,
+                        (
+                            ver_id, old_r["id"], app_id, doc_type, old_r["filename"],
+                            old_r["stored_path"], old_r["file_size"], old_r["sha256_hash"],
+                            old_r["mime_type"], version_num, old_r["val_status"] or "UNKNOWN",
+                            old_r["summary_text"] or "", old_r["uploaded_at"], user.get("email", "USER")
+                        )
+                    )
                     conn.execute("DELETE FROM documents WHERE id = ?", (old_r["id"],))
                     conn.execute("DELETE FROM validation_runs WHERE document_id = ?", (old_r["id"],))
 

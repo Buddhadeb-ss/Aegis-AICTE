@@ -21,13 +21,174 @@ from views.theme import (
     render_breadcrumbs,
     render_metrics_ribbon,
     render_empty_state,
-    render_status_badge
+    render_status_badge,
+    render_version_differential_card
 )
 from views.validation_view import (
     render_application_verdict,
     render_decision_oriented_results,
     render_validation_summary_badge
 )
+from views.inspector import render_pdf_inspector_ui
+from core.scenarios import load_scenario_deficient, load_scenario_clean, load_scenario_clarification
+
+
+def generate_printable_scrutiny_order_html(packet: Dict[str, Any], officer_user: Dict[str, Any]) -> str:
+    """Generates an official, print-ready statutory scrutiny determination order with Gazette formatting."""
+    app = packet["application"]
+    docs = packet.get("documents", [])
+    val_sum = packet.get("validation_summary", {})
+    clarifs = packet.get("clarifications", [])
+    status = app.get("status", "UNDER_SCRUTINY")
+    now_str = datetime.now().strftime("%d %B %Y, %H:%M IST")
+
+    doc_rows = []
+    for idx, d in enumerate(docs, 1):
+        v_status = d.get("validation_run", {}).get("status", "VERIFIED") if isinstance(d.get("validation_run"), dict) else "VERIFIED"
+        badge = '<span style="color: #166534; font-weight: bold;">[VERIFIED]</span>' if v_status in ["PASSED", "VERIFIED"] else f'<span style="color: #991B1B; font-weight: bold;">[{v_status}]</span>'
+        doc_rows.append(f"""
+        <tr>
+            <td style="border: 1px solid #CBD5E1; padding: 6px 10px; text-align: center;">{idx}</td>
+            <td style="border: 1px solid #CBD5E1; padding: 6px 10px;"><strong>{d.get('document_type')}</strong></td>
+            <td style="border: 1px solid #CBD5E1; padding: 6px 10px;">{d.get('filename')}</td>
+            <td style="border: 1px solid #CBD5E1; padding: 6px 10px; font-family: monospace; font-size: 8pt;">{d.get('sha256_hash', 'N/A')[:24]}...</td>
+            <td style="border: 1px solid #CBD5E1; padding: 6px 10px; text-align: center;">{badge}</td>
+        </tr>
+        """)
+
+    order_badge_color = "#15803D" if status == "APPROVED" else ("#DC2626" if status == "REJECTED" else "#B45309")
+    determination_title = "STATUTORY APPROVAL CONFERRED" if status == "APPROVED" else ("APPLICATION DEFICIENT / REJECTED" if status == "REJECTED" else "INTERIM DEFICIT & CLARIFICATION MEMORANDUM")
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AICTE Statutory Scrutiny Order — {app.get('application_number')}</title>
+<style>
+    @page {{ size: A4; margin: 15mm; }}
+    @media print {{
+        .no-print {{ display: none !important; }}
+        body {{ font-size: 10pt; color: #000; background: #FFF; }}
+    }}
+    body {{
+        font-family: 'Times New Roman', Times, serif;
+        line-height: 1.45;
+        color: #0F172A;
+        background: #F8FAFC;
+        margin: 0;
+        padding: 20px;
+    }}
+    .order-container {{
+        max-width: 820px;
+        margin: 0 auto;
+        background: #FFFFFF;
+        border: 2px solid #0F172A;
+        padding: 36px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }}
+    .header-center {{ text-align: center; border-bottom: 2px solid #0F172A; padding-bottom: 12px; margin-bottom: 16px; }}
+    .header-center h1 {{ margin: 0; font-size: 15pt; letter-spacing: 0.5px; text-transform: uppercase; }}
+    .header-center h2 {{ margin: 3px 0; font-size: 11pt; font-weight: normal; }}
+    .header-center h3 {{ margin: 2px 0; font-size: 9.5pt; color: #475569; }}
+    .meta-table {{ width: 100%; border-collapse: collapse; margin-bottom: 14px; }}
+    .meta-table td {{ padding: 3px 6px; font-size: 9.5pt; vertical-align: top; }}
+    .docs-table {{ width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 8.5pt; }}
+    .docs-table th {{ background: #F1F5F9; border: 1px solid #CBD5E1; padding: 6px 8px; text-align: left; }}
+    .verdict-box {{
+        border: 2px solid {order_badge_color};
+        background: #F8FAFC;
+        padding: 12px;
+        margin: 16px 0;
+        text-align: center;
+    }}
+    .verdict-title {{ font-size: 12pt; font-weight: bold; color: {order_badge_color}; margin-bottom: 4px; }}
+    .sig-section {{ margin-top: 32px; display: flex; justify-content: space-between; align-items: flex-end; }}
+    .sig-block {{ text-align: center; width: 220px; border-top: 1px solid #000; padding-top: 6px; }}
+    .btn-print {{
+        background: #1D4ED8; color: #FFF; padding: 8px 16px; font-size: 12px; font-weight: bold;
+        border: none; border-radius: 6px; cursor: pointer; margin-bottom: 12px;
+    }}
+</style>
+</head>
+<body>
+<div class="no-print" style="text-align: right; max-width: 820px; margin: 0 auto 10px auto;">
+    <button class="btn-print" onclick="window.print()">🖨️ Print / Save as Official Gazette Order (PDF)</button>
+</div>
+<div class="order-container">
+    <div class="header-center">
+        <h1>All India Council for Technical Education</h1>
+        <h2>Central Regulatory Scrutiny Directorate · New Delhi</h2>
+        <h3>(A Statutory Body under the Ministry of Education, Government of India)</h3>
+        <p style="margin: 4px 0 0 0; font-size: 8pt; color: #64748B;">Nelson Mandela Marg, Vasant Kunj, New Delhi-110070 · www.aicte-india.org</p>
+    </div>
+
+    <table class="meta-table">
+        <tr>
+            <td style="width: 50%;"><strong>F.No. AICTE/SCRUTINY/2026-27/{app.get('application_number')}</strong></td>
+            <td style="width: 50%; text-align: right;"><strong>Date of Order:</strong> {now_str}</td>
+        </tr>
+        <tr>
+            <td><strong>Institution Name:</strong> {app.get('institution_name')}</td>
+            <td style="text-align: right;"><strong>Permanent AICTE ID:</strong> {app.get('institution_code')}</td>
+        </tr>
+        <tr>
+            <td><strong>Campus Location:</strong> {app.get('city')}, {app.get('state')}</td>
+            <td style="text-align: right;"><strong>Academic Session:</strong> {app.get('academic_year')}</td>
+        </tr>
+        <tr>
+            <td colspan="2"><strong>Application Category:</strong> {app.get('category', '').replace('_', ' ')}</td>
+        </tr>
+    </table>
+
+    <div class="verdict-box">
+        <div class="verdict-title">{determination_title}</div>
+        <div style="font-size: 9.5pt;"><strong>Statutory Decision:</strong> {status}</div>
+    </div>
+
+    <h4 style="margin: 12px 0 4px 0; font-size: 9.5pt; text-transform: uppercase;">1. Statutory Document Verification Inventory</h4>
+    <table class="docs-table">
+        <thead>
+            <tr>
+                <th style="width: 25px; text-align: center;">#</th>
+                <th>Statutory Requirement</th>
+                <th>Submitted Filename</th>
+                <th>SHA-256 Digest</th>
+                <th style="text-align: center;">Rule Pre-Check</th>
+            </tr>
+        </thead>
+        <tbody>
+            {''.join(doc_rows) if doc_rows else '<tr><td colspan="5" style="text-align: center; padding: 8px;">No documents attached.</td></tr>'}
+        </tbody>
+    </table>
+
+    <h4 style="margin: 14px 0 4px 0; font-size: 9.5pt; text-transform: uppercase;">2. Official Scrutiny Order & Directive</h4>
+    <p style="font-size: 9pt; text-align: justify; margin: 4px 0 8px 0;">
+        The Central Scrutiny Committee has evaluated the statutory dossier submitted by <strong>{app.get('institution_name')}</strong> 
+        in conformity with the provisions of Section 10 of the AICTE Act 1987 and the norms prescribed under the Approval Process Handbook 
+        (APH 2026-2027). The deterministic rule checks, land title verifications, structural plans, and notarized affidavits have been examined on record.
+    </p>
+    <div style="background: #F1F5F9; border-left: 3px solid #0F172A; padding: 8px 12px; font-size: 8.5pt; margin: 8px 0;">
+        <strong>Officer Statutory Remarks:</strong><br>
+        {app.get('notes') or 'Compliance verified against AICTE Approval Process Handbook (APH 2026-27) norms.'}
+    </div>
+
+    <div class="sig-section">
+        <div>
+            <div style="font-size: 7.5pt; color: #64748B;">
+                <strong>DIGITAL INTEGRITY SEAL</strong><br>
+                SHA-256 Digest: <code>{packet.get('validation_summary', {}).get('overall_status', 'CLEAR')}-SECURE-{app.get('id')[:12]}</code><br>
+                Verification URI: <code>http://aicte.gov.in/verify/{app.get('application_number')}</code>
+            </div>
+        </div>
+        <div class="sig-block">
+            <strong>{officer_user.get('name', 'Scrutiny Officer')}</strong><br>
+            <span style="font-size: 8pt;">Reviewing Scrutiny Officer<br>Central Scrutiny Directorate, AICTE</span>
+        </div>
+    </div>
+</div>
+</body>
+</html>"""
+    return html
 
 
 def generate_scrutiny_summary_report(packet: Dict[str, Any], officer_user: Dict[str, Any]) -> str:
@@ -138,6 +299,46 @@ def render_officer_dashboard(user: Dict[str, Any], apps: List[Dict[str, Any]]):
         {"label": "Audit Events", "value": total_events, "icon": "📜", "sub": "Immutable trail records", "color": "#475569"},
     ]
     render_metrics_ribbon(metrics_data)
+
+    # One-Click Regulatory Demonstration Scenarios
+    with st.expander("🎯 One-Click Regulatory Simulation Suite (Instant Evaluation & Live Demo)", expanded=False):
+        st.markdown("Quickly seed and load realistic synthetic dossiers to test or demonstrate regulatory scrutiny workflows:")
+        c_sc1, c_sc2, c_sc3 = st.columns(3)
+        with c_sc1:
+            st.markdown("**Scenario 1: Deficient Application**")
+            st.caption("Building plan naming anomaly & pending municipal demarcation. Generates 7-field findings.")
+            if st.button("▶ Load Deficient Dossier", key="btn_load_sc1", use_container_width=True):
+                res = load_scenario_deficient()
+                st.session_state["officer_view"] = "review"
+                st.session_state["active_app_id"] = res["application_id"]
+                st.query_params["view"] = "review"
+                st.query_params["app_id"] = res["application_id"]
+                st.success(f"Loaded Scenario 1 ({res['application_number']})!")
+                st.rerun()
+
+        with c_sc2:
+            st.markdown("**Scenario 2: Clean Compliance Dossier**")
+            st.caption("100% compliant application with all 4 mandatory documents passing all rule checks.")
+            if st.button("▶ Load Clean Dossier", key="btn_load_sc2", use_container_width=True):
+                res = load_scenario_clean()
+                st.session_state["officer_view"] = "review"
+                st.session_state["active_app_id"] = res["application_id"]
+                st.query_params["view"] = "review"
+                st.query_params["app_id"] = res["application_id"]
+                st.success(f"Loaded Scenario 2 ({res['application_number']})!")
+                st.rerun()
+
+        with c_sc3:
+            st.markdown("**Scenario 3: Active Clarification**")
+            st.caption("Application undergoing formal clarification request with pending surveyor proof.")
+            if st.button("▶ Load Clarification Dossier", key="btn_load_sc3", use_container_width=True):
+                res = load_scenario_clarification()
+                st.session_state["officer_view"] = "review"
+                st.session_state["active_app_id"] = res["application_id"]
+                st.query_params["view"] = "review"
+                st.query_params["app_id"] = res["application_id"]
+                st.success(f"Loaded Scenario 3 ({res['application_number']})!")
+                st.rerun()
 
     # Three prominent cards (APPLICATIONS, ADD APPLICATION, and LOGS)
     col_apps, col_new, col_logs = st.columns(3)
@@ -587,16 +788,29 @@ def render_individual_review(user: Dict[str, Any]):
     st.markdown("### 📄 ATTACHED DOCUMENTS & VALIDATION RESULTS")
     render_decision_oriented_results(packet, user)
 
+    # Deep PDF Structure Inspector for attached documents
+    if docs:
+        with st.expander("🔬 Deep PDF Structure & Forensics Inspector (Inspect Any Submitted Document)", expanded=False):
+            doc_choice = st.selectbox(
+                "Choose document to inspect:",
+                options=docs,
+                format_func=lambda d: f"{d['filename']} ({d['document_type']})",
+                key="officer_inspect_doc_choice"
+            )
+            if doc_choice:
+                render_pdf_inspector_ui(doc_choice)
+
     st.markdown("---")
 
-    # Wireframe 5: APPROVE / REJECT Controls, Clarification Workflow, Immutable Timeline & Export
+    # Wireframe 5: APPROVE / REJECT Controls, Clarification Workflow, Immutable Timeline, Export & Versions
     st.markdown("### ⚖️ REGULATORY ACTION: APPROVE / REJECT / CLARIFY")
 
-    tab_decision, tab_clarif, tab_timeline, tab_export = st.tabs([
+    tab_decision, tab_clarif, tab_timeline, tab_export, tab_versions = st.tabs([
         "⚖️ Record Statutory Scrutiny Outcome",
         "💬 Clarification Workflow",
         "📜 Dossier Regulatory Timeline",
-        "📄 Export Scrutiny Summary"
+        "📄 Export Scrutiny Summary",
+        "📑 Document Versions & Diff"
     ])
 
     # Tab 1: APPROVE / REJECT
@@ -712,14 +926,13 @@ def render_individual_review(user: Dict[str, Any]):
         else:
             st.info("No audit events recorded for this application dossier.")
 
-    # Tab 4: Export Scrutiny Summary Report
+    # Tab 4: Export Scrutiny Summary Report & Gazette Order
     with tab_export:
-        st.markdown("#### 📄 Statutory Scrutiny Summary Export")
-        st.caption("Generate a structured, formal Preliminary Scrutiny Summary Report for regulatory recordkeeping.")
+        st.markdown("#### 📄 Statutory Scrutiny Summary & Gazette Order Export")
+        st.caption("Generate structured regulatory reports and official printable Gazette scrutiny determination orders.")
 
         report_txt = generate_scrutiny_summary_report(packet, user)
-        with st.expander("👁️ Preview Scrutiny Summary Report", expanded=False):
-            st.code(report_txt, language="text")
+        order_html = generate_printable_scrutiny_order_html(packet, user)
 
         c_dl1, c_dl2 = st.columns(2)
         with c_dl1:
@@ -729,10 +942,47 @@ def render_individual_review(user: Dict[str, Any]):
                 file_name=f"AICTE_Scrutiny_{app['application_number']}.txt",
                 mime="text/plain",
                 use_container_width=True,
-                type="primary"
+                type="primary",
+                key="btn_dl_txt_report"
             )
         with c_dl2:
-            st.caption("Official statutory artifact generated under AICTE Approval Process Handbook (APH 2026-27).")
+            st.download_button(
+                label="🖨️ Download Official Gazette Order (.html)",
+                data=order_html,
+                file_name=f"AICTE_Gazette_Order_{app['application_number']}.html",
+                mime="text/html",
+                use_container_width=True,
+                key="btn_dl_html_order"
+            )
+
+        with st.expander("👁️ Preview Official Gazette Scrutiny Order (Printable)", expanded=False):
+            st.caption("Print preview of the formal statutory determination order formatted for physical print / PDF export:")
+            st.components.v1.html(order_html, height=500, scrolling=True)
+
+        with st.expander("👁️ Preview Raw Text Scrutiny Summary", expanded=False):
+            st.code(report_txt, language="text")
+
+    # Tab 5: Document Version Progression & Differential
+    with tab_versions:
+        st.markdown("#### 📑 Document Version Progression & Change Differential")
+        st.caption("Inspect archival history for replaced or resubmitted statutory documents.")
+        doc_versions = packet.get("document_versions", [])
+        if doc_versions:
+            st.markdown(f"**{len(doc_versions)} Superseded Revision(s) on Record:**")
+            for v in doc_versions:
+                cur_doc = next((d for d in docs if d["document_type"] == v["document_type"]), None)
+                if cur_doc:
+                    render_version_differential_card(v, cur_doc)
+                else:
+                    with st.container(border=True):
+                        st.markdown(f"**{v['document_type']}** · Version `v{v['version_number']}` (Archived: {v['archived_at'][:19]})")
+                        st.write(f"Archived Filename: `{v['filename']}` · File Size: {v['file_size']/1024:.1f} KB · Result: **{v['validation_status']}**")
+        else:
+            render_empty_state(
+                icon="📑",
+                title="No Superseded Revisions",
+                description="All submitted documents are initial version (v1). When an institution replaces or corrects an uploaded file, the previous version and validation differential will appear here."
+            )
 
 
 def render_audit_trail_view():
