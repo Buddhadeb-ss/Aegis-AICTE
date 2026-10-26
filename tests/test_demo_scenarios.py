@@ -36,7 +36,10 @@ def setup_teardown():
 
 
 def _create_regulatory_pdf(title: str, text: str) -> bytes:
-    import fitz
+    try:
+        import pymupdf as fitz
+    except ImportError:
+        import fitz
     doc = fitz.open()
     doc.set_metadata({
         "creator": "Government Directorate of Technical Education",

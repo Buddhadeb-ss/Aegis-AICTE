@@ -9,7 +9,10 @@ import re
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz  # Fallback for older environments
 from core.validation.schema import CheckResult, CheckStatus, CheckSeverity, CheckCategory, ENGINE_VERSION
 
 CONSUMER_TOOLS = {

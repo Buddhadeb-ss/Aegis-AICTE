@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 import bcrypt
 from core.db import get_db
-from core.audit import log_event
+from core.audit import log_event, get_audit_events, get_application_audit_trail
 from core.forensics import compute_sha256, audit_pdf_structure, is_valid_pdf_magic
 from core.validation.engine import ValidationEngine
 
@@ -121,14 +121,28 @@ class ApplicationService:
         institution_id: Optional[str] = None,
         initial_status: str = "DRAFT"
     ) -> Dict[str, Any]:
-        """Creates an application for a college."""
-        target_inst = institution_id if institution_id is not None else institution_or_user
-        if isinstance(target_inst, dict):
-            final_inst_id = target_inst.get("institution_id") or target_inst.get("id")
+        """Creates an application for a college with strict multi-tenant authorization."""
+        if isinstance(institution_or_user, dict):
+            caller_role = institution_or_user.get("role")
+            caller_inst = institution_or_user.get("institution_id")
+            if caller_role == "COLLEGE_REPRESENTATIVE":
+                if institution_id and institution_id != caller_inst:
+                    raise PermissionError(f"Unauthorized: College Representative cannot create applications for another institution '{institution_id}'.")
+                final_inst_id = caller_inst
+            else:
+                final_inst_id = institution_id or caller_inst or institution_or_user.get("id")
             if not actor:
-                actor = target_inst.get("email", "USER")
+                actor = institution_or_user.get("email", "USER")
         else:
-            final_inst_id = str(target_inst)
+            final_inst_id = str(institution_id if institution_id is not None else institution_or_user)
+
+        if not final_inst_id:
+            raise ValueError("Institution ID must be specified to create an application.")
+
+        with get_db(db_path) as conn:
+            inst_check = conn.execute("SELECT id FROM institutions WHERE id = ?", (final_inst_id,)).fetchone()
+            if not inst_check:
+                raise ValueError(f"Cannot create application: Institution '{final_inst_id}' does not exist.")
 
         app_id = f"app_{uuid.uuid4().hex[:10]}"
         app_no = f"AICTE-{datetime.now().year}-{uuid.uuid4().hex[:6].upper()}"
@@ -270,6 +284,7 @@ class ApplicationService:
             d["validation_run"] = ValidationEngine.get_latest_run_for_document(d["id"], db_path=db_path)
 
         val_summary = ValidationEngine.get_application_validation_summary(app_id, db_path=db_path)
+        audit_trail = get_application_audit_trail(app_id=app_id, limit=50, db_path=db_path)
 
         return {
             "application": app,
@@ -278,7 +293,8 @@ class ApplicationService:
             "mandatory_checklist": mandatory,
             "missing_documents": missing_docs,
             "completeness_pct": completeness_pct,
-            "validation_summary": val_summary
+            "validation_summary": val_summary,
+            "audit_trail": audit_trail
         }
 
     @staticmethod
@@ -366,7 +382,7 @@ class ApplicationService:
         )
         forensic_data = val_run.to_dict()
 
-        log_event("DOCUMENT_UPLOADED", "document", doc_id, actor=user["email"], details={"filename": clean_basename, "sha256": sha256, "validation_status": val_run.status}, db_path=db_path)
+        log_event("DOCUMENT_UPLOADED", "document", doc_id, actor=user["email"], details={"application_id": app_id, "filename": clean_basename, "sha256": sha256, "validation_status": val_run.status}, db_path=db_path)
         return {"id": doc_id, "sha256": sha256, "forensic": forensic_data, "validation_run": forensic_data, "stored_path": stored_path}
 
     @staticmethod
@@ -381,6 +397,10 @@ class ApplicationService:
 
         app_packet = ApplicationService.get_application_details(doc["application_id"], user, db_path=db_path)
         app = app_packet["application"]
+
+        if user.get("role") != "COLLEGE_REPRESENTATIVE":
+            raise PermissionError("Only college representatives can delete documents from their draft application.")
+
         if app["status"] not in ["DRAFT", "CLARIFICATION_REQUESTED"]:
             raise PermissionError("Documents can only be modified in DRAFT or CLARIFICATION_REQUESTED status.")
 
@@ -393,6 +413,9 @@ class ApplicationService:
     @staticmethod
     def submit_application(app_id: str, user: Dict[str, Any], db_path: Optional[str] = None):
         """Submits draft application for regulatory scrutiny."""
+        if user.get("role") != "COLLEGE_REPRESENTATIVE":
+            raise PermissionError("Only college representatives can submit an application for scrutiny.")
+
         app_packet = ApplicationService.get_application_details(app_id, user, db_path=db_path)
         app = app_packet["application"]
 
@@ -511,11 +534,11 @@ class ApplicationService:
         notes: str = "",
         db_path: Optional[str] = None
     ):
-        """AICTE Officer records final statutory outcome (APPROVED or REJECTED)."""
+        """AICTE Officer records final statutory outcome (APPROVED, REJECTED, DEFICIENT, or UNDER_SCRUTINY)."""
         if officer_user.get("role") != "AICTE_SCRUTINY_OFFICER":
             raise PermissionError("Only AICTE Scrutiny Officers can record final approval/rejection outcomes.")
 
-        valid_outcomes = ["APPROVED", "REJECTED", "UNDER_SCRUTINY"]
+        valid_outcomes = ["APPROVED", "REJECTED", "UNDER_SCRUTINY", "DEFICIENT"]
         if outcome not in valid_outcomes:
             raise ValueError(f"Outcome must be one of {valid_outcomes}")
 
@@ -524,7 +547,12 @@ class ApplicationService:
         if app["status"] == "DRAFT":
             raise ValueError("Cannot record decision on application in 'DRAFT' status. Application must be submitted for scrutiny.")
 
-        clean_notes = notes.strip() if notes else f"Application {outcome.lower()} by AICTE Scrutiny Officer."
+        clean_notes = (notes or "").strip()
+        if outcome in ["APPROVED", "REJECTED", "DEFICIENT"] and not clean_notes:
+            raise ValueError(f"A specific statutory justification note is required to record a decision of '{outcome}'.")
+
+        if not clean_notes:
+            clean_notes = f"Application status updated to {outcome} by AICTE Scrutiny Officer."
 
         with get_db(db_path) as conn:
             conn.execute(
@@ -537,13 +565,17 @@ class ApplicationService:
 
     @staticmethod
     def rerun_validation(doc_id: str, user: Dict[str, Any], db_path: Optional[str] = None) -> Dict[str, Any]:
-        """Manually re-triggers the document validation engine."""
+        """Manually re-triggers the document validation engine with tenant boundary checks."""
         with get_db(db_path) as conn:
             cur = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
             doc_row = cur.fetchone()
         if not doc_row:
             raise KeyError(f"Document '{doc_id}' not found.")
         d = dict(doc_row)
+
+        # Enforce multi-tenant access check on the document's parent application
+        ApplicationService.get_application_details(d["application_id"], user, db_path=db_path)
+
         run_res = ValidationEngine.validate_document(
             doc_id=d["id"],
             app_id=d["application_id"],
@@ -566,12 +598,19 @@ class ApplicationService:
         db_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """Records an officer's human review determination on a specific check finding."""
+        if user.get("role") != "AICTE_SCRUTINY_OFFICER":
+            raise PermissionError("Only AICTE Scrutiny Officers can record finding dispositions.")
+
+        clean_notes = (notes or "").strip()
+        if not clean_notes:
+            raise ValueError("A justification note is required to record a finding disposition.")
+
         return ValidationEngine.record_finding_disposition(
             check_record_id=check_record_id,
             doc_id=doc_id,
             app_id=app_id,
             officer_email=user["email"],
             disposition=disposition,
-            officer_notes=notes,
+            officer_notes=clean_notes,
             db_path=db_path
         )

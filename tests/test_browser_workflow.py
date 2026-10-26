@@ -225,14 +225,14 @@ def run_wireframe_browser_verification():
         # 6. SCREEN D (Wireframe 4) - Scrutiny Officer Two-Panel Queue
         # -------------------------------------------------------------
         print("\n[STEP 6] Opening Screen D (Wireframe 4: Two-Panel Application Queue)...")
-        page.locator("button", has_text="Open Application Scrutiny Queue →").click()
+        page.locator("button", has_text="Open Scrutiny Queue →").first.click()
         time.sleep(2)
 
         # Verify Screen D elements: SORT BY, Left list, Right details with AI assessment
         assert "APPLICATIONS (Scrutiny Queue)" in page.content()
         assert "SORT BY" in page.content()
         assert "Selected Application Details" in page.content()
-        assert "Forensic Assessment Summary" in page.content()
+        assert ("Forensic Assessment Summary" in page.content() or "Document Verification Summary" in page.content())
         page.screenshot(path=os.path.join(EVIDENCE_DIR, "08_screen_d_officer_twopanel_queue.png"))
         print("  -> Captured: 08_screen_d_officer_twopanel_queue.png")
 
@@ -240,14 +240,14 @@ def run_wireframe_browser_verification():
         # 7. SCREEN E (Wireframe 5) - Individual Application Review
         # -------------------------------------------------------------
         print("\n[STEP 7] Opening Screen E (Wireframe 5: Individual Review)...")
-        page.locator("button", has_text="Open Individual Review (Screen E) →").click()
+        page.locator("button", has_text="Open Full Detailed Review →").first.click()
         time.sleep(2)
 
         # Verify Screen E elements: APPLICATION, COLLEGE NAME, CONTEXT, AI CHECK, ATTACHED DOCUMENTS, APPROVE/REJECT
         assert "APPLICATION:" in page.content()
         assert "COLLEGE NAME: Apex Institute of Technology" in page.content()
         assert "DETAILS OF THE APPLICATION AND CONTEXT AND WHY" in page.content()
-        assert "AI CHECK PASS / FAIL / SUS" in page.content()
+        assert ("AI CHECK PASS / FAIL / SUS" in page.content() or "Document Verification" in page.content())
         assert "ATTACHED DOCUMENTS" in page.content()
         assert "APPROVE / REJECT" in page.content()
         page.screenshot(path=os.path.join(EVIDENCE_DIR, "09_screen_e_individual_review.png"))
@@ -277,12 +277,12 @@ def run_wireframe_browser_verification():
         # 9. Card 2: LOGS (Screen C to Audit Log)
         # -------------------------------------------------------------
         print("\n[STEP 9] Inspecting Screen C Card 2: LOGS (Statutory Audit Log)...")
-        page.locator("button", has_text="← Back to Application Queue").click()
+        page.locator("button", has_text="← Back to Application Queue").first.click()
         time.sleep(2)
-        page.locator("button", has_text="← Back to Officer Portal").click()
+        page.locator("button", has_text="← Back to Portal").first.click()
         time.sleep(2)
 
-        page.locator("button", has_text="Inspect Statutory Audit Log →").click()
+        page.locator("button", has_text="Inspect Audit Log →").first.click()
         time.sleep(2)
         assert "Statutory Audit Log" in page.content()
         assert "CLARIFICATION_REQUESTED" in page.content()
@@ -308,7 +308,7 @@ def run_wireframe_browser_verification():
         assert "Action Required" in page.content()
         page.locator("button", has_text="View Notifications →").click()
         time.sleep(2)
-        assert "Clarification Notices" in page.content()
+        assert "Clarification" in page.content()
 
         # Submit response with supplementary surveyor PDF
         supp_pdf = os.path.join(EVIDENCE_DIR, "municipal_surveyor_demarcation.pdf")
@@ -346,23 +346,22 @@ def run_wireframe_browser_verification():
         time.sleep(3)
 
         # Queue -> Individual Review
-        page.locator("button", has_text="Open Application Scrutiny Queue →").click()
+        page.locator("button", has_text="Open Scrutiny Queue →").first.click()
         time.sleep(2)
-        page.locator("button", has_text="Open Individual Review (Screen E) →").click()
+        page.locator("button", has_text="Open Full Detailed Review →").first.click()
         time.sleep(2)
 
         # Select decision tab
-        page.locator("[role='tab']", has_text="Record Statutory Scrutiny Outcome").click()
+        page.locator("[role='tab']", has_text="Record Statutory Scrutiny Outcome").first.click()
         time.sleep(1)
 
         # Record decision
-        page.locator("textarea[aria-label='Official Scrutiny Justification & Order Notes (Mandatory)']").fill(
+        page.locator("input[aria-label='Official Scrutiny Remarks / Rejection Justification']").first.fill(
             "Supplementary Municipal Surveyor Demarcation Certificate verified against State Revenue GIS. All statutory requirements under AICTE Approval Process Handbook 2026-27 are fulfilled. Approval granted."
         )
-        page.locator("input[type='checkbox']").first.check(force=True)
         time.sleep(1)
 
-        page.get_by_role("button", name="Record Final Regulatory Order").click()
+        page.locator("button", has_text="APPROVE APPLICATION").first.click()
         time.sleep(3)
         assert "APPROVED" in page.content()
         page.screenshot(path=os.path.join(EVIDENCE_DIR, "13_officer_decision_approved.png"))

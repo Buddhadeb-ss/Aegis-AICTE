@@ -19,7 +19,10 @@ import os
 import shutil
 import tempfile
 import pytest
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 from core.db import get_db, init_db, seed_foundation
 from core.auth import AuthService, ApplicationService

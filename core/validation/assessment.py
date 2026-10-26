@@ -660,31 +660,40 @@ class AssessmentAggregator:
         summary = finding.get("summary", "")
         problem_exp = finding.get("problem_explanation", "")
         rec = finding.get("recommendation", "")
-
         # Default values
-        problem = summary
-        evidence_str = problem_exp
+        problem = summary or "Action required on submitted document."
+        evidence_str = problem_exp or summary
         action = rec or "Inspect document details."
+        why_it_matters = "Statutory document verification requires adherence to AICTE Approval Process Handbook standards."
+        confidence_limitation = "Confirmed technical error" if f_state == AssessmentState.ISSUE_FOUND.value else "Rule-based validation finding."
 
         if f_type == AssessmentType.VALIDITY_AND_READABILITY.value:
             if "password" in summary.lower():
                 problem = "The document is password-protected and cannot be evaluated."
                 evidence_str = "PDF requires password to unlock content."
                 action = "Request an unencrypted replacement copy."
+                why_it_matters = "Scrutiny officers cannot inspect locked documents; statutory filings must be unencrypted."
+                confidence_limitation = "Confirmed technical error (100% deterministic)."
             elif "size" in summary.lower():
                 problem = "The document exceeds the statutory file size limit."
                 evidence_str = f"File size exceeds allowable boundary (15 MB)."
                 action = "Request compressed PDF copy within size limits."
+                why_it_matters = "Oversized files exceed national portal transmission and archival capacity."
+                confidence_limitation = "Confirmed technical error (exact byte count measured)."
             elif "scanned" in summary.lower() or raw_ev.get("is_scanned"):
                 problem = "The document contains scanned images without digital text streams."
                 chars = raw_ev.get("total_chars", 0)
                 pages = raw_ev.get("page_count", "all")
                 evidence_str = f"{chars} digital text characters extracted across {pages} page(s); raster image scan detected."
                 action = "Visually inspect physical seals, stamps, and signatures in the document viewer."
+                why_it_matters = "Automated text extraction cannot read rasterized images; physical seals and signatures require visual review."
+                confidence_limitation = "Operational limitation — not a failure. Land deeds and revenue stamps are legitimately scanned paper."
             elif "parsing error" in summary.lower() or "corrupt" in summary.lower() or f_state == AssessmentState.INCOMPLETE.value:
                 problem = "The document could not be read."
                 evidence_str = f"PDF parsing failed: {problem_exp or 'Unparseable or damaged PDF structure.'}"
                 action = "Request a readable replacement."
+                why_it_matters = "Corrupted files cannot be rendered or archived in the statutory scrutiny record."
+                confidence_limitation = "Confirmed technical error (PyMuPDF parser stream failure)."
 
         elif f_type == AssessmentType.REQUIRED_INFO_COMPLIANCE.value:
             if "does not match the expected document" in summary.lower() or raw_ev.get("mismatch") or "concordance" in summary.lower():
@@ -694,6 +703,8 @@ class AssessmentAggregator:
                 problem = "The uploaded filename/category does not match the expected document."
                 evidence_str = f"Expected: {exp_name} | Uploaded: {up_name}"
                 action = "Review document"
+                why_it_matters = "Uploading an unrelated certificate under this checklist requirement leaves the mandatory statutory item unverified."
+                confidence_limitation = "Confirmed category mismatch (deterministic keyword concordance)."
             elif "mandatory" in summary.lower() or "clauses" in summary.lower() or f_state == AssessmentState.ISSUE_FOUND.value:
                 problem = f"A required statutory clause could not be located in {doc_type.replace('_', ' ')}."
                 matched = raw_ev.get("matched_keywords", [])
@@ -703,14 +714,20 @@ class AssessmentAggregator:
                 else:
                     evidence_str = problem_exp or "Required statutory terms not located in text stream."
                 action = "Inspect the document or request a corrected copy."
+                why_it_matters = "AICTE Approval Process Handbook (APH 2026-27) mandates specific statutory provisions in this certificate."
+                confidence_limitation = "Deterministic text search finding across extracted digital streams."
             elif "scanned image" in summary.lower():
                 problem = "Automated clause verification not available for scanned image."
                 evidence_str = "Text stream empty; OCR capability not configured."
                 action = "Manually verify required statutory clauses in document viewer."
+                why_it_matters = "Scanned documents require officer verification of stamped clauses."
+                confidence_limitation = "Automated check deferred due to image scan."
             elif "date" in summary.lower():
                 problem = "Document dates require scrutiny against the 2026-27 academic session."
                 evidence_str = f"Extracted dates: {raw_ev.get('extracted_dates', [])}."
                 action = "Inspect document issuance and validity dates."
+                why_it_matters = "Statutory certificates (e.g. Fire NOC, Affiliation) must remain valid for the active academic approval cycle."
+                confidence_limitation = "Deterministic date regex extraction."
 
         elif f_type == AssessmentType.CROSS_DOCUMENT_CONSISTENCY.value:
             if "duplicate" in summary.lower() or raw_ev.get("matching_filename"):
@@ -719,18 +736,24 @@ class AssessmentAggregator:
                 m_type = raw_ev.get("matching_document_type", "another document")
                 evidence_str = f"Identical file content matches '{m_file}' (submitted as {m_type})."
                 action = "Review the discrepancy or request clarification."
+                why_it_matters = "Each mandatory requirement must be evidenced by its own distinct statutory proof."
+                confidence_limitation = "Confirmed duplicate (cryptographic SHA-256 collision)."
             elif "code" in summary.lower() or raw_ev.get("observed_code"):
                 problem = "The institution identifier differs from another submitted document."
                 obs = raw_ev.get("observed_code", "N/A")
                 exp = raw_ev.get("expected_code", "N/A")
                 evidence_str = f"This file contains '{obs}'; the other document contains '{exp}'."
                 action = "Review the discrepancy or request clarification."
+                why_it_matters = "Differing institution codes suggest misfiled documents belonging to a different technical college."
+                confidence_limitation = "Deterministic regex match of standard permanent code."
             elif "name" in summary.lower() or raw_ev.get("observed_name"):
                 problem = "The institution title differs from another submitted document."
                 obs = raw_ev.get("observed_name", "N/A")
                 exp = raw_ev.get("expected_name", "N/A")
                 evidence_str = f"This file contains '{obs}'; companion document contains '{exp}'."
                 action = "Verify whether this is an accepted abbreviation or sponsoring society designation."
+                why_it_matters = "Ensures the land and building approvals are legally executed in the name of the applicant Trust or Society."
+                confidence_limitation = "Token overlap analysis."
 
         elif f_type == AssessmentType.AUTHENTICITY_AND_ANOMALIES.value:
             if "script" in summary.lower() or raw_ev.get("found_scripts"):
@@ -738,28 +761,42 @@ class AssessmentAggregator:
                 scripts = raw_ev.get("found_scripts", ["/JavaScript"])
                 evidence_str = f"Embedded script action(s) detected: {scripts}."
                 action = "Request a clean, static PDF replacement without interactive scripts."
+                why_it_matters = "Regulatory documents must be inert static records to prevent arbitrary execution or dynamic rendering."
+                confidence_limitation = "Confirmed structural finding (direct PDF stream dictionary inspection)."
             elif "consumer" in summary.lower() or raw_ev.get("detected_consumer_tools"):
                 problem = "Document metadata indicates processing with consumer online software."
                 tools = raw_ev.get("detected_consumer_tools", ["online editor"])
                 evidence_str = f"Consumer editing signature detected: {', '.join(tools)}."
                 action = "Advisory indicator only (often file compression). No rejection warranted on this basis alone; inspect official seal."
+                why_it_matters = "Online PDF editors frequently compress or strip metadata. Advisory notice only."
+                confidence_limitation = "Advisory heuristic signal — does NOT prove forgery or tampering."
             elif "timestamp" in summary.lower():
                 problem = "Metadata timestamp anomaly (modification date predates creation)."
                 evidence_str = "Modification timestamp is earlier than creation timestamp (often caused by scanner workstation clock drift)."
                 action = "Advisory indicator only. Review document visual seals."
+                why_it_matters = "Creation and modification timestamps are inverted, frequently caused by scanner workstation clock skew."
+                confidence_limitation = "Advisory heuristic signal — does NOT prove forgery."
 
         from core.validation.checks.content_rules import DOC_HUMAN_NAMES
         exp_doc_name = raw_ev.get("expected_document") or DOC_HUMAN_NAMES.get(doc_type, doc_type.replace('_', ' ').title())
         up_file_name = raw_ev.get("uploaded_filename") or filename
 
         return {
+            # 7 Mandatory Human-Understandable Fields
+            "document": filename,
+            "expected": exp_doc_name,
+            "finding": problem,
+            "evidence": evidence_str,
+            "why_it_matters": why_it_matters,
+            "recommended_action": action,
+            "confidence_or_limitation": confidence_limitation,
+            # Backwards-compatibility and technical context fields
             "file": filename,
             "document_id": finding.get("document_id"),
             "document_type": doc_type,
             "expected_document": exp_doc_name,
             "uploaded_filename": up_file_name,
             "problem": problem,
-            "evidence": evidence_str,
             "action": action,
             "state": f_state,
             "severity": finding.get("severity", "MEDIUM"),

@@ -5,10 +5,11 @@ Implements a formal, clean, restrained government-service interface matching the
 - Clean card architecture (#FFFFFF on #F8FAFC)
 - Subtle borders (#E2E8F0) and restrained box-shadows
 - Consistent top header with emblem and profile/account circle control
+- Reusable administrative components: Metrics Ribbon, Multi-step Wizard, Badges, Empty States
 """
 
 import streamlit as st
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 
 def apply_custom_css():
@@ -94,6 +95,130 @@ def apply_custom_css():
         justify-content: center;
         font-weight: 600;
         font-size: 0.8rem;
+    }
+
+    /* Metrics Ribbon */
+    .metrics-ribbon {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+        margin: 16px 0 24px 0;
+    }
+    .metric-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 16px 18px;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    .metric-card:hover {
+        border-color: #CBD5E1;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+    }
+    .metric-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+    .metric-label {
+        font-size: 0.74rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #64748B;
+    }
+    .metric-icon {
+        font-size: 1.15rem;
+    }
+    .metric-value {
+        font-size: 1.65rem;
+        font-weight: 700;
+        color: #0F172A;
+        line-height: 1.1;
+        margin-bottom: 4px;
+    }
+    .metric-sub {
+        font-size: 0.74rem;
+        color: #94A3B8;
+    }
+
+    /* Multi-step Wizard Step Indicator */
+    .wizard-steps-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 12px 20px;
+        margin-bottom: 24px;
+    }
+    .wizard-step-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .step-number-circle {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        font-weight: 700;
+    }
+    .step-active .step-number-circle {
+        background: #1E3A8A;
+        color: #FFFFFF;
+    }
+    .step-done .step-number-circle {
+        background: #DCFCE7;
+        color: #166534;
+        border: 1px solid #86EFAC;
+    }
+    .step-pending .step-number-circle {
+        background: #F1F5F9;
+        color: #94A3B8;
+        border: 1px solid #CBD5E1;
+    }
+    .step-label {
+        font-size: 0.84rem;
+        font-weight: 600;
+    }
+    .step-active .step-label { color: #1E3A8A; }
+    .step-done .step-label { color: #166534; }
+    .step-pending .step-label { color: #64748B; }
+
+    /* Empty States */
+    .empty-state-box {
+        background: #FFFFFF;
+        border: 1.5px dashed #CBD5E1;
+        border-radius: 8px;
+        padding: 36px 20px;
+        text-align: center;
+        margin: 16px 0;
+    }
+    .empty-state-icon {
+        font-size: 2.2rem;
+        margin-bottom: 10px;
+    }
+    .empty-state-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #0F172A;
+        margin-bottom: 4px;
+    }
+    .empty-state-desc {
+        font-size: 0.85rem;
+        color: #64748B;
+        max-width: 480px;
+        margin: 0 auto 16px auto;
+        line-height: 1.5;
     }
 
     /* Wireframe Navigation Card System */
@@ -184,8 +309,10 @@ def apply_custom_css():
     .badge-rejected { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
     .badge-submitted { background: #DBEAFE; color: #1E40AF; border: 1px solid #93C5FD; }
     .badge-clarification { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+    .badge-clarification_requested { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
     .badge-draft { background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; }
     .badge-scrutiny { background: #E0E7FF; color: #3730A3; border: 1px solid #A5B4FC; }
+    .badge-under_scrutiny { background: #E0E7FF; color: #3730A3; border: 1px solid #A5B4FC; }
     .badge-pass { background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }
     .badge-fail { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
     .badge-warning { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
@@ -348,6 +475,108 @@ def render_header(
         f'</div>'
     )
     st.markdown(header_html, unsafe_allow_html=True)
+
+
+def render_breadcrumbs(crumbs: List[Dict[str, Any]]):
+    """
+    Renders clean, styled breadcrumbs for in-app navigation hierarchy.
+    crumbs: List of dicts, e.g. [{"label": "Portal", "active": False}, {"label": "Queue", "active": True}]
+    """
+    if not crumbs:
+        return
+    parts = []
+    for c in crumbs:
+        label = c.get("label", "")
+        icon = c.get("icon", "")
+        icon_str = f"{icon} " if icon else ""
+        if c.get("active"):
+            parts.append(f'<span style="color: #0F172A; font-weight: 700;">{icon_str}{label}</span>')
+        else:
+            parts.append(f'<span style="color: #64748B;">{icon_str}{label}</span>')
+    
+    crumb_html = (
+        '<div style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; margin-bottom: 16px; padding: 6px 14px; background: #F1F5F9; border-radius: 6px; border: 1px solid #E2E8F0;">'
+        + ' <span style="color: #94A3B8; font-weight: bold;">›</span> '.join(parts)
+        + '</div>'
+    )
+    st.markdown(crumb_html, unsafe_allow_html=True)
+
+
+def render_metrics_ribbon(metrics: List[Dict[str, Any]]):
+    """
+    Renders a responsive metrics ribbon displaying institutional or scrutiny indicators.
+    Each item: {"label": str, "value": Any, "icon": str, "sub": Optional[str], "color": Optional[str]}
+    """
+    if not metrics:
+        return
+    cards_html = []
+    for m in metrics:
+        label = m.get("label", "")
+        val = str(m.get("value", 0))
+        icon = m.get("icon", "📊")
+        sub = m.get("sub", "")
+        color = m.get("color", "#0F172A")
+        cards_html.append(f"""
+        <div class="metric-card">
+            <div class="metric-header">
+                <span class="metric-label">{label}</span>
+                <span class="metric-icon">{icon}</span>
+            </div>
+            <div class="metric-value" style="color: {color};">{val}</div>
+            <div class="metric-sub">{sub}</div>
+        </div>
+        """)
+    
+    html = f'<div class="metrics-ribbon">{"".join(cards_html)}</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def render_wizard_step_bar(steps: List[str], active_idx: int):
+    """
+    Renders a multi-step authoring wizard header.
+    steps: e.g. ["1. Institutional Details", "2. Statutory Checklist", "3. Document Uploads", "4. Review & Submit"]
+    active_idx: 0-indexed active step
+    """
+    step_items = []
+    for i, s in enumerate(steps):
+        if i < active_idx:
+            status_class = "step-done"
+            circle_content = "✓"
+        elif i == active_idx:
+            status_class = "step-active"
+            circle_content = str(i + 1)
+        else:
+            status_class = "step-pending"
+            circle_content = str(i + 1)
+
+        step_items.append(f"""
+        <div class="wizard-step-item {status_class}">
+            <div class="step-number-circle">{circle_content}</div>
+            <div class="step-label">{s}</div>
+        </div>
+        """)
+
+    connector = '<span style="color: #CBD5E1; font-weight: bold;">───</span>'
+    html = f'<div class="wizard-steps-container">{connector.join(step_items)}</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def render_empty_state(icon: str, title: str, description: str):
+    """Renders a styled empty state placeholder."""
+    st.markdown(f"""
+    <div class="empty-state-box">
+        <div class="empty-state-icon">{icon}</div>
+        <div class="empty-state-title">{title}</div>
+        <div class="empty-state-desc">{description}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_status_badge(status: str) -> str:
+    """Returns the HTML span string for a status badge."""
+    clean_status = (status or "DRAFT").strip().upper()
+    badge_class = f"badge badge-{clean_status.lower()}"
+    return f'<span class="{badge_class}">{clean_status.replace("_", " ")}</span>'
 
 
 def render_footer():

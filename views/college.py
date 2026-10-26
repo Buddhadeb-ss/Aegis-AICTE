@@ -1,28 +1,44 @@
 """
 Aegis Foundation - Screen B: College Representative Portal
-Directly implements Wireframe 3:
-- Top Header: College Representative Portal with profile circle in upper-right corner
-- Three prominent navigation cards:
-  1. APPLY (application authoring, draft creation & continuation)
-  2. APPLICATION STATUS (view existing applications, completeness, details)
-  3. NOTIFICATIONS (clarification requests, officer inquiries & responses)
+Comprehensive Institutional Compliance & Application Scrutiny System:
+- Top Header with institutional permanent ID, accreditation badge, and user pill
+- Dynamic metrics ribbon (Total dossiers, Drafts, In Review, Action Required, Concluded)
+- Three prominent navigation cards (APPLY, APPLICATION STATUS, NOTIFICATIONS)
+- Multi-step application creation wizard (Details -> Checklist -> Uploads -> Submission)
+- Robust application management with live search, status filters, and sorting
+- Comprehensive document workspace with versioning, live pre-check, and replacements
+- Chronological dossier audit timeline and clarification response round-trip
 """
 
 import os
 import time
+import json
 import streamlit as st
+from typing import Dict, Any, List
 from core.auth import ApplicationService, MANDATORY_DOCUMENTS
-from views.theme import render_header, render_footer, apply_custom_css
+from views.theme import (
+    render_header,
+    render_footer,
+    apply_custom_css,
+    render_breadcrumbs,
+    render_metrics_ribbon,
+    render_wizard_step_bar,
+    render_empty_state,
+    render_status_badge
+)
 from views.validation_view import render_applicant_feedback_panel
 
 
-def render_college_dashboard(user, apps, notifications):
-    """Main dashboard displaying the 3 prominent navigation cards from Wireframe 3."""
+def render_college_dashboard(user: Dict[str, Any], apps: List[Dict[str, Any]], notifications: List[Dict[str, Any]]):
+    """Main dashboard displaying live metrics ribbon and the 3 prominent navigation cards."""
     open_inquiries = [n for n in notifications if n.get("status") == "OPEN"]
     active_drafts = [a for a in apps if a.get("status") == "DRAFT"]
+    submitted_apps = [a for a in apps if a.get("status") in ["SUBMITTED", "UNDER_SCRUTINY"]]
+    concluded_apps = [a for a in apps if a.get("status") in ["APPROVED", "REJECTED"]]
 
+    # Directorate Context Banner
     banner_html = (
-        '<div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px 24px; margin-bottom: 24px;">'
+        '<div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px 24px; margin-bottom: 20px;">'
         '<div style="display: flex; justify-content: space-between; align-items: center;">'
         '<div>'
         f'<h2 style="font-size: 1.35rem; color: #0F172A; margin: 0 0 4px 0; font-weight: 700;">{user.get("institution_name", "Institutional Workspace")}</h2>'
@@ -33,10 +49,19 @@ def render_college_dashboard(user, apps, notifications):
     )
     st.markdown(banner_html, unsafe_allow_html=True)
 
-    # Wireframe 3: 3 Prominent Cards (APPLY, APPLICATION STATUS, NOTIFICATIONS)
+    # Metrics Ribbon (Dynamic Data Grounded in Real SQLite Records)
+    metrics_data = [
+        {"label": "Total Applications", "value": len(apps), "icon": "📂", "sub": "Institutional dossiers", "color": "#0F172A"},
+        {"label": "Active Drafts", "value": len(active_drafts), "icon": "📝", "sub": "Incomplete authoring", "color": "#2563EB"},
+        {"label": "Under Scrutiny", "value": len(submitted_apps), "icon": "⚖️", "sub": "Directorate review", "color": "#1E40AF"},
+        {"label": "Action Required", "value": len(open_inquiries), "icon": "⚠️", "sub": "Clarification notices", "color": "#B45309" if open_inquiries else "#64748B"},
+        {"label": "Concluded", "value": len(concluded_apps), "icon": "✅", "sub": "Approved / Decided", "color": "#15803D" if concluded_apps else "#64748B"},
+    ]
+    render_metrics_ribbon(metrics_data)
+
+    # 3 Prominent Navigation Cards (Wireframe 3 Standard)
     c_apply, c_status, c_notify = st.columns(3)
 
-    # 1. APPLY Card
     with c_apply:
         st.markdown(f"""
         <div class="wf-card">
@@ -55,9 +80,9 @@ def render_college_dashboard(user, apps, notifications):
         """, unsafe_allow_html=True)
         if st.button("Open Application (Apply) →", key="card_btn_apply", use_container_width=True, type="primary"):
             st.session_state["college_view"] = "apply"
+            st.query_params["view"] = "apply"
             st.rerun()
 
-    # 2. APPLICATION STATUS Card
     with c_status:
         st.markdown(f"""
         <div class="wf-card">
@@ -76,9 +101,9 @@ def render_college_dashboard(user, apps, notifications):
         """, unsafe_allow_html=True)
         if st.button("Check Application Status →", key="card_btn_status", use_container_width=True, type="primary"):
             st.session_state["college_view"] = "status"
+            st.query_params["view"] = "status"
             st.rerun()
 
-    # 3. NOTIFICATIONS Card
     with c_notify:
         alert_style = "color: #B45309; font-weight: 700;" if open_inquiries else "color: #15803D; font-weight: 700;"
         st.markdown(f"""
@@ -98,132 +123,219 @@ def render_college_dashboard(user, apps, notifications):
         """, unsafe_allow_html=True)
         if st.button("View Notifications →", key="card_btn_notify", use_container_width=True, type="primary"):
             st.session_state["college_view"] = "notifications"
+            st.query_params["view"] = "notifications"
             st.rerun()
 
-    # Recent overview section
+    # Recent Overview Section
     st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
-    st.markdown("### 📋 Institutional Dossier Overview")
+    st.markdown("### 📋 Institutional Dossier Activity")
 
     if not apps:
-        st.info("No applications submitted yet. Click the **APPLY** card above to create your institution's initial approval draft.")
+        render_empty_state(
+            icon="📂",
+            title="No Applications Initiated",
+            description="Your institution has not initiated any approval applications for the 2026-27 cycle. Click the Apply card above to start your application dossier."
+        )
     else:
-        for a in apps[:3]:
+        for a in apps[:4]:
             with st.container(border=True):
-                ca, cb, cc, cd = st.columns([2.5, 1.2, 1.2, 1.2])
+                ca, cb, cc, cd = st.columns([2.6, 1.2, 1.2, 1.2])
                 with ca:
                     st.markdown(f"**{a['application_number']}** — *{a['category'].replace('_', ' ')}*")
                     st.caption(f"Academic Year: {a['academic_year']} · Documents: {a['doc_count']}")
                 with cb:
-                    st.markdown(f"Status: **{a['status']}**")
+                    st.markdown(render_status_badge(a["status"]), unsafe_allow_html=True)
                 with cc:
                     if a.get("open_clarifications", 0) > 0:
-                        st.warning(f"⚠️ {a['open_clarifications']} Pending Action")
+                        st.warning(f"⚠️ {a['open_clarifications']} Action Items")
                     else:
                         st.caption("No pending inquiries")
                 with cd:
                     if st.button("Open Dossier →", key=f"dash_open_{a['id']}", use_container_width=True):
                         st.session_state["active_app_id"] = a["id"]
                         st.session_state["college_view"] = "dossier_detail"
+                        st.query_params["view"] = "dossier_detail"
+                        st.query_params["app_id"] = a["id"]
                         st.rerun()
 
 
-def render_apply_view(user, apps):
-    """View for Card 1 (APPLY) - Create new or continue active draft."""
-    c_back, c_title = st.columns([1, 4])
+def render_apply_view(user: Dict[str, Any], apps: List[Dict[str, Any]]):
+    """View for Card 1 (APPLY) - Multi-step wizard to create or continue active draft."""
+    render_breadcrumbs([
+        {"label": "Institutional Workspace", "icon": "🎓"},
+        {"label": "Apply & Draft Application", "icon": "📝", "active": True}
+    ])
+
+    c_back, c_title = st.columns([1.2, 4])
     with c_back:
         if st.button("← Back to Dashboard", key="btn_apply_back", use_container_width=True):
             st.session_state["college_view"] = "dashboard"
+            st.query_params["view"] = "dashboard"
             st.rerun()
     with c_title:
-        st.markdown("## 📝 Statutory Approval Application (Apply)")
+        st.markdown("## 📝 Statutory Approval Application Authoring")
 
-    # Check if active draft exists
+    # Wizard step state
+    if "wizard_step" not in st.session_state:
+        st.session_state["wizard_step"] = 0
+
+    wizard_steps = [
+        "1. Details & Category",
+        "2. Mandatory Checklist",
+        "3. Document Uploads",
+        "4. Review & Submission"
+    ]
+    render_wizard_step_bar(wizard_steps, st.session_state["wizard_step"])
+
     active_drafts = [a for a in apps if a.get("status") == "DRAFT"]
 
     if active_drafts:
-        st.success(f"You have an active draft application: **{active_drafts[0]['application_number']}** ({active_drafts[0]['category']})")
-        col_c1, col_c2 = st.columns([1, 1])
+        d_app = active_drafts[0]
+        st.info(f"📌 Active In-Progress Draft: **`{d_app['application_number']}`** ({d_app['category'].replace('_', ' ')})")
+        col_c1, col_c2 = st.columns([1, 1.2])
         with col_c1:
-            if st.button("Continue Active Draft →", key="btn_cont_draft", use_container_width=True, type="primary"):
-                st.session_state["active_app_id"] = active_drafts[0]["id"]
+            if st.button("Resume Active Draft Workspace →", key="btn_cont_draft", use_container_width=True, type="primary"):
+                st.session_state["active_app_id"] = d_app["id"]
                 st.session_state["college_view"] = "dossier_detail"
+                st.query_params["view"] = "dossier_detail"
+                st.query_params["app_id"] = d_app["id"]
                 st.rerun()
         with col_c2:
-            st.caption("You can upload statutory documents or finalize submission on the active draft.")
+            st.caption("You can continue uploading statutory documents or submit the active draft for scrutiny.")
         st.markdown("---")
 
-    st.markdown("### Initialize New Regulatory Dossier")
-    with st.form("create_new_application_form"):
-        category = st.selectbox(
-            "Application Category",
-            ["NEW_TECHNICAL_INSTITUTION", "EXTENSION_OF_APPROVAL"],
-            format_func=lambda x: "New Technical Institution (Initial Regulatory Approval)" if x == "NEW_TECHNICAL_INSTITUTION" else "Extension of Approval (EoA - Existing Approved Institution)"
-        )
-        academic_year = st.selectbox("Academic Year", ["2026-2027", "2027-2028"])
-        notes = st.text_area("Institutional Remarks & Purpose (Optional)", placeholder="Describe context, campus location, proposed academic streams, or statutory expansion...")
+    # Wizard Step 0: Category & Details
+    if st.session_state["wizard_step"] == 0:
+        st.markdown("### Step 1: Institutional Approval Framework & Category")
+        with st.form("create_new_application_form"):
+            category = st.selectbox(
+                "Regulatory Application Category",
+                ["NEW_TECHNICAL_INSTITUTION", "EXTENSION_OF_APPROVAL"],
+                format_func=lambda x: "New Technical Institution (Initial AICTE Approval Process)" if x == "NEW_TECHNICAL_INSTITUTION" else "Extension of Approval (EoA - Existing Approved Technical College)"
+            )
+            academic_year = st.selectbox("Academic Year / Session", ["2026-2027", "2027-2028"])
+            notes = st.text_area(
+                "Institutional Remarks & Justification (Optional)",
+                placeholder="Specify campus location, proposed academic departments, intake capacity, or statutory justification..."
+            )
+            sub_next = st.form_submit_button("Save & Proceed to Document Checklist →", use_container_width=True, type="primary")
 
-        submit = st.form_submit_button("Create Application Draft", use_container_width=True, type="primary")
+            if sub_next:
+                res = ApplicationService.create_application(
+                    institution_or_user=user,
+                    category=category,
+                    academic_year=academic_year,
+                    notes=notes
+                )
+                st.session_state["active_app_id"] = res["id"]
+                st.session_state["wizard_step"] = 1
+                st.session_state["college_view"] = "dossier_detail"
+                st.query_params["view"] = "dossier_detail"
+                st.query_params["app_id"] = res["id"]
+                st.success(f"Application Draft `{res['application_number']}` initialized successfully!")
+                st.rerun()
 
-        if submit:
-            res = ApplicationService.create_application(user["institution_id"], category, academic_year, user["email"], notes)
-            st.session_state["active_app_id"] = res["id"]
-            st.session_state["college_view"] = "dossier_detail"
-            st.success(f"Application Draft {res['application_number']} created successfully! Proceeding to document checklist...")
-            st.rerun()
 
-
-def render_status_view(user, apps):
-    """View for Card 2 (APPLICATION STATUS) - List of applications & details."""
-    c_back, c_title = st.columns([1, 4])
+def render_status_view(user: Dict[str, Any], apps: List[Dict[str, Any]]):
+    """View for Card 2 (APPLICATION STATUS) - Searchable, filterable management table."""
+    render_breadcrumbs([
+        {"label": "Institutional Workspace", "icon": "🎓"},
+        {"label": "Application Status & Management", "icon": "📊", "active": True}
+    ])
+    c_back, c_title = st.columns([1.2, 4])
     with c_back:
         if st.button("← Back to Dashboard", key="btn_status_back", use_container_width=True):
             st.session_state["college_view"] = "dashboard"
+            st.query_params["view"] = "dashboard"
             st.rerun()
     with c_title:
-        st.markdown("## 📊 Institutional Application Status")
+        st.markdown("## 📊 Institutional Application Management")
 
     if not apps:
-        st.info("No applications recorded for this institution. Use the **Apply** section to submit an application.")
+        render_empty_state(
+            icon="📊",
+            title="No Records Found",
+            description="Your institution does not have any recorded applications. Use the Apply module to initiate a submission."
+        )
         return
 
-    for a in apps:
+    # Filter & Search Bar
+    col_search, col_filter, col_sort = st.columns([1.8, 1.2, 1.2])
+    with col_search:
+        search_q = st.text_input("🔍 Search by Application No. or Category", placeholder="AICTE-2026, New Technical...", key="status_search")
+    with col_filter:
+        status_flt = st.selectbox("Filter Status", ["ALL", "DRAFT", "SUBMITTED", "UNDER_SCRUTINY", "CLARIFICATION_REQUESTED", "APPROVED", "REJECTED"], key="status_filter")
+    with col_sort:
+        sort_flt = st.selectbox("Sort Order", ["Newest First", "Oldest First", "Status"], key="status_sort")
+
+    # Apply Filtering & Sorting
+    filtered_apps = list(apps)
+    if status_flt != "ALL":
+        filtered_apps = [a for a in filtered_apps if a["status"] == status_flt]
+    if search_q.strip():
+        sq = search_q.strip().lower()
+        filtered_apps = [a for a in filtered_apps if sq in a["application_number"].lower() or sq in a["category"].lower() or sq in (a.get("notes") or "").lower()]
+
+    if sort_flt == "Newest First":
+        filtered_apps.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    elif sort_flt == "Oldest First":
+        filtered_apps.sort(key=lambda x: x.get("created_at", ""))
+    elif sort_flt == "Status":
+        filtered_apps.sort(key=lambda x: x.get("status", ""))
+
+    st.markdown(f"**Found {len(filtered_apps)} matching applications:**")
+
+    for a in filtered_apps:
         with st.container(border=True):
-            col1, col2, col3, col4 = st.columns([2.5, 1.2, 1.2, 1.2])
+            col1, col2, col3, col4 = st.columns([2.5, 1.3, 1.2, 1.2])
             with col1:
-                st.markdown(f"**Application No:** `{a['application_number']}`")
+                st.markdown(f"**Application Reference:** `{a['application_number']}`")
                 st.caption(f"Category: **{a['category'].replace('_', ' ')}** · Session: **{a['academic_year']}**")
                 if a.get("notes"):
-                    st.caption(f"Remarks: {a['notes'][:100]}...")
+                    st.caption(f"Remarks: {a['notes'][:90]}...")
             with col2:
-                status = a["status"]
-                badge_class = f"badge badge-{status.lower()}"
-                st.markdown(f"<span class='{badge_class}'>{status}</span>", unsafe_allow_html=True)
-                st.caption(f"Documents: {a['doc_count']}")
+                st.markdown(render_status_badge(a["status"]), unsafe_allow_html=True)
+                # Completeness calculation
+                mandatory_reqs = MANDATORY_DOCUMENTS.get(a["category"], MANDATORY_DOCUMENTS["NEW_TECHNICAL_INSTITUTION"])
+                doc_pct = min(100, int((a.get("doc_count", 0) / max(len(mandatory_reqs), 1)) * 100))
+                st.caption(f"Documents: {a.get('doc_count', 0)} of {len(mandatory_reqs)} ({doc_pct}%)")
             with col3:
                 st.caption(f"Created: {a['created_at'][:10]}")
                 if a.get("open_clarifications", 0) > 0:
                     st.warning(f"⚠️ {a['open_clarifications']} Action Items")
                 else:
-                    st.caption("Scrutiny Active")
+                    st.caption("Compliant / In Scrutiny")
             with col4:
-                if st.button("Open Dossier →", key=f"status_open_{a['id']}", use_container_width=True):
+                btn_label = "Continue Draft →" if a["status"] == "DRAFT" else "Inspect Dossier →"
+                if st.button(btn_label, key=f"status_open_{a['id']}", use_container_width=True):
                     st.session_state["active_app_id"] = a["id"]
                     st.session_state["college_view"] = "dossier_detail"
+                    st.query_params["view"] = "dossier_detail"
+                    st.query_params["app_id"] = a["id"]
                     st.rerun()
 
 
-def render_notifications_view(user, notifications):
+def render_notifications_view(user: Dict[str, Any], notifications: List[Dict[str, Any]]):
     """View for Card 3 (NOTIFICATIONS) - Clarification requests and official notices."""
-    c_back, c_title = st.columns([1, 4])
+    render_breadcrumbs([
+        {"label": "Institutional Workspace", "icon": "🎓"},
+        {"label": "Regulatory Notifications & Clarifications", "icon": "🔔", "active": True}
+    ])
+    c_back, c_title = st.columns([1.2, 4])
     with c_back:
         if st.button("← Back to Dashboard", key="btn_notif_back", use_container_width=True):
             st.session_state["college_view"] = "dashboard"
+            st.query_params["view"] = "dashboard"
             st.rerun()
     with c_title:
         st.markdown("## 🔔 Regulatory Inquiries & Clarification Notices")
 
     if not notifications:
-        st.success("✅ No statutory clarification requests or pending inquiries on record. All submissions are in order.")
+        render_empty_state(
+            icon="✅",
+            title="All Clear — No Pending Inquiries",
+            description="Your institution has no outstanding statutory clarification notices or deficiency items. All submitted dossiers are in order."
+        )
         return
 
     open_inquiries = [n for n in notifications if n.get("status") == "OPEN"]
@@ -266,6 +378,7 @@ def render_notifications_view(user, notifications):
                                 st.error(str(ve))
 
     if resolved_inquiries:
+        st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
         st.markdown("### 📜 Clarification History (Resolved)")
         for cl in resolved_inquiries:
             with st.container(border=True):
@@ -276,18 +389,21 @@ def render_notifications_view(user, notifications):
                     st.caption(f"Attached Proof: {cl['response_documents']}")
 
 
-def render_dossier_detail(user):
-    """Full application dossier view (document upload, completeness, and final submission)."""
-    app_id = st.session_state.get("active_app_id")
-
-    c_back, c_title = st.columns([1, 4])
-    with c_back:
-        if st.button("← Back to Applications", key="btn_dossier_back", use_container_width=True):
-            st.session_state["college_view"] = "status"
-            st.rerun()
+def render_dossier_detail(user: Dict[str, Any]):
+    """Full application dossier workspace (document management, live pre-check, and final submission)."""
+    app_id = st.session_state.get("active_app_id") or st.query_params.get("app_id")
 
     if not app_id:
+        render_breadcrumbs([
+            {"label": "Institutional Workspace", "icon": "🎓"},
+            {"label": "Application Status", "icon": "📊"},
+            {"label": "Dossier Detail", "icon": "📄", "active": True}
+        ])
         st.info("No active dossier selected.")
+        if st.button("← Back to Applications", key="btn_dossier_empty_back"):
+            st.session_state["college_view"] = "status"
+            st.query_params["view"] = "status"
+            st.rerun()
         return
 
     try:
@@ -296,6 +412,9 @@ def render_dossier_detail(user):
         st.error(f"Access error: {str(e)}. Returning to dashboard.")
         st.session_state.pop("active_app_id", None)
         st.session_state["college_view"] = "dashboard"
+        st.query_params["view"] = "dashboard"
+        if "app_id" in st.query_params:
+            del st.query_params["app_id"]
         st.rerun()
         return
 
@@ -303,14 +422,30 @@ def render_dossier_detail(user):
     docs = packet["documents"]
     clarifs = packet["clarifications"]
 
-    with c_title:
-        st.markdown(f"## Dossier: {app['application_number']}")
+    render_breadcrumbs([
+        {"label": "Institutional Workspace", "icon": "🎓"},
+        {"label": "Application Status", "icon": "📊"},
+        {"label": f"Dossier {app['application_number']}", "icon": "📄", "active": True}
+    ])
 
+    c_back, c_title = st.columns([1.2, 4])
+    with c_back:
+        if st.button("← Back to Applications", key="btn_dossier_back", use_container_width=True):
+            st.session_state["college_view"] = "status"
+            st.query_params["view"] = "status"
+            if "app_id" in st.query_params:
+                del st.query_params["app_id"]
+            st.rerun()
+
+    with c_title:
+        st.markdown(f"## Dossier: `{app['application_number']}`")
+
+    # Header Card
     st.markdown(f"""
     <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <strong>Status:</strong> <span style="font-weight: 700; color: #1E40AF;">{app['status']}</span> · 
+                <strong>Status:</strong> {render_status_badge(app['status'])} · 
                 <strong>Category:</strong> {app['category'].replace('_', ' ')} · 
                 <strong>Academic Year:</strong> {app['academic_year']}
             </div>
@@ -321,23 +456,24 @@ def render_dossier_detail(user):
     </div>
     """, unsafe_allow_html=True)
 
-    # Document Completeness & Submission Readiness
+    # Document Completeness & Submission Readiness Gauge
     st.markdown("### Statutory Document Checklist")
     pct = packet["completeness_pct"]
-    st.progress(pct / 100.0, text=f"Completeness: {pct}% ({len(docs)} uploaded)")
+    st.progress(pct / 100.0, text=f"Statutory Completeness: {pct}% ({len(docs)} of {len(packet['mandatory_checklist'])} required documents uploaded)")
 
     if packet["missing_documents"]:
-        st.error(f"📋 **Submission Incomplete:** Missing mandatory documents: {', '.join(packet['missing_documents'])}. Please upload the missing items below before final submission.")
+        missing_fmt = [m.replace("_", " ").title() for m in packet["missing_documents"]]
+        st.error(f"📋 **Submission Incomplete:** Missing mandatory documents: **{', '.join(missing_fmt)}**. Please upload all required items below to unlock formal submission.")
     else:
-        st.success("✅ **Ready for Submission:** All mandatory statutory documents uploaded and verified. You may proceed with final submission below.")
+        st.success("✅ **Ready for Scrutiny:** All mandatory statutory documents uploaded and verified. You may proceed with formal submission below.")
 
-    # Document Upload (if DRAFT or CLARIFICATION_REQUESTED)
+    # Document Upload Section (available if in DRAFT or CLARIFICATION_REQUESTED)
     if app["status"] in ["DRAFT", "CLARIFICATION_REQUESTED"]:
-        with st.expander("📤 Upload Statutory Document", expanded=True):
+        with st.expander("📤 Upload / Replace Statutory Document", expanded=True):
             with st.form("upload_doc_form", clear_on_submit=True):
-                doc_type = st.selectbox("Document Type", packet["mandatory_checklist"])
-                uploaded_file = st.file_uploader("Select PDF or Scanned Document (Max 15MB)", type=["pdf", "png", "jpg", "jpeg"])
-                upload_btn = st.form_submit_button("Upload and Audit Document", use_container_width=True)
+                doc_type = st.selectbox("Select Regulatory Document Type", packet["mandatory_checklist"], format_func=lambda x: x.replace("_", " ").title())
+                uploaded_file = st.file_uploader("Select PDF or Certified Scan (Max 15MB)", type=["pdf", "png", "jpg", "jpeg"])
+                upload_btn = st.form_submit_button("Upload and Audit Document", use_container_width=True, type="primary")
 
                 if upload_btn:
                     if not uploaded_file:
@@ -346,31 +482,32 @@ def render_dossier_detail(user):
                         file_bytes = uploaded_file.read()
                         try:
                             with st.status("Verifying document...", expanded=True) as s_box:
-                                s_box.write("📖 Reading uploaded documents...")
-                                time.sleep(0.3)
-                                s_box.write("📋 Checking document requirements...")
-                                time.sleep(0.3)
-                                s_box.write("🔍 Comparing uploaded files with expected categories...")
-                                time.sleep(0.3)
-                                s_box.write("📊 Preparing the result...")
+                                s_box.write("📖 Reading uploaded file bytes & verifying magic header...")
+                                time.sleep(0.2)
+                                s_box.write("📋 Checking statutory document requirements...")
+                                time.sleep(0.2)
+                                s_box.write("🔍 Running deterministic structural & extraction checks...")
+                                time.sleep(0.2)
+                                s_box.write("📊 Preparing 7-field explainable findings...")
                                 res = ApplicationService.upload_document(app_id, user, doc_type, uploaded_file.name, file_bytes)
                                 s_box.update(label="Document processed successfully", state="complete", expanded=False)
-                            st.success(f"Document '{uploaded_file.name}' uploaded successfully!")
+                            st.success(f"Document '{uploaded_file.name}' uploaded and verified successfully!")
                             st.rerun()
                         except ValueError as ve:
                             st.error(str(ve))
 
-    # Uploaded Documents List
+    # Uploaded Documents Workspace
     st.markdown("### Uploaded Dossier Documents")
     if docs:
         for d in docs:
             run_d = d.get("validation_run") or {}
             c_status = run_d.get("assessment_overall_state", "PASS")
+            file_size_kb = max(1, d.get("file_size", 0) // 1024)
             with st.container(border=True):
-                col1, col2, col3, col4 = st.columns([2.5, 1, 1, 1.2])
+                col1, col2, col3, col4 = st.columns([2.6, 1, 1, 1.4])
                 with col1:
                     st.markdown(f"📄 **{d['document_type'].replace('_', ' ')}** (`{d['filename']}`)")
-                    st.caption(f"Uploaded: {d['uploaded_at'][:10]} · Statutory Document")
+                    st.caption(f"Size: {file_size_kb} KB · Hash: `{d.get('sha256_hash', '')[:12]}...` · Uploaded: {d['uploaded_at'][:10]}")
                 with col2:
                     if c_status in ["ISSUE_FOUND", "INCOMPLETE"]:
                         st.markdown('<span class="badge badge-issue">Action Needed</span>', unsafe_allow_html=True)
@@ -379,7 +516,13 @@ def render_dossier_detail(user):
                     else:
                         st.markdown('<span class="badge badge-clear">In Order</span>', unsafe_allow_html=True)
                 with col3:
-                    st.caption(f"Status: Recorded")
+                    if st.button("🔄 Re-run Check", key=f"rerun_{d['id']}", use_container_width=True):
+                        try:
+                            ApplicationService.rerun_validation(d["id"], user)
+                            st.success("Re-check complete!")
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(str(ex))
                 with col4:
                     file_path = d.get("stored_path")
                     if file_path and os.path.exists(file_path):
@@ -400,14 +543,20 @@ def render_dossier_detail(user):
                                 st.rerun()
                             except Exception as e:
                                 st.error(str(e))
+                # Render the 7-field structured finding feedback
                 render_applicant_feedback_panel(d)
     else:
-        st.info("No documents uploaded yet.")
+        render_empty_state(
+            icon="📄",
+            title="No Documents Uploaded",
+            description="Use the upload tool above to attach mandatory statutory certificates (Land Title, Building Approval, AICTE Affidavit, Fire Safety)."
+        )
 
     # Final Submission Button (if DRAFT)
     if app["status"] == "DRAFT":
         st.markdown("---")
-        if st.button("🚀 Final Submission for Regulatory Scrutiny", use_container_width=True, type="primary"):
+        can_submit = packet["completeness_pct"] >= 100
+        if st.button("🚀 Final Submission for Regulatory Scrutiny", use_container_width=True, type="primary", disabled=not can_submit):
             try:
                 ApplicationService.submit_application(app_id, user)
                 st.success("Application successfully submitted to AICTE Scrutiny Queue!")
@@ -415,12 +564,41 @@ def render_dossier_detail(user):
             except ValueError as ve:
                 st.error(str(ve))
 
+    # Audit Trail Timeline Expander
+    st.markdown("<div style='margin-top: 18px;'></div>", unsafe_allow_html=True)
+    with st.expander("📜 Application Activity & Audit Timeline", expanded=False):
+        timeline = packet.get("audit_trail", [])
+        if timeline:
+            for ev in timeline:
+                ev_type = ev.get("event_type", "EVENT")
+                ev_time = ev.get("created_at", "")[:19].replace("T", " ")
+                details = {}
+                if ev.get("details_json"):
+                    try:
+                        details = json.loads(ev["details_json"])
+                    except Exception:
+                        details = {}
+                with st.container(border=True):
+                    st.markdown(f"**{ev_type.replace('_', ' ')}** · 🕒 `{ev_time}`")
+                    if details.get("outcome"):
+                        st.write(f"Scrutiny Determination: **{details['outcome']}**")
+                    if details.get("notes"):
+                        st.caption(f"Remarks: {details['notes']}")
+                    if details.get("question"):
+                        st.info(f"Clarification Inquiry: {details['question']}")
+                    if details.get("response"):
+                        st.success(f"Submitted Response: {details['response']}")
+                    if details.get("filename"):
+                        st.caption(f"Document File: {details['filename']}")
+        else:
+            st.caption("No audit activity logged yet.")
+
 
 def college_page():
     """Main College Portal Entrypoint implementing Wireframe 3."""
     user = st.session_state.get("user")
     if not user:
-        st.error("Session terminated.")
+        st.error("Session terminated. Please return to the public login portal.")
         return
 
     # Top Header matching Wireframe 3
@@ -434,8 +612,22 @@ def college_page():
     apps = ApplicationService.get_applications_for_user(user)
     notifications = ApplicationService.get_notifications_for_user(user)
 
+    # Synchronize view and active_app_id with st.query_params
+    qp_view = st.query_params.get("view")
+    if qp_view and "college_view" not in st.session_state:
+        st.session_state["college_view"] = qp_view
+    elif "college_view" in st.session_state:
+        st.query_params["view"] = st.session_state["college_view"]
+
+    qp_app_id = st.query_params.get("app_id")
+    if qp_app_id and "active_app_id" not in st.session_state:
+        st.session_state["active_app_id"] = qp_app_id
+    elif "active_app_id" in st.session_state:
+        st.query_params["app_id"] = st.session_state["active_app_id"]
+
     view = st.session_state.get("college_view", "dashboard")
 
+    # Routing
     if view == "apply":
         render_apply_view(user, apps)
     elif view == "status":

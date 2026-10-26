@@ -171,29 +171,44 @@ def render_decision_oriented_results(packet: Dict[str, Any], user: Dict[str, Any
             is_issue = (f_state == AssessmentState.ISSUE_FOUND.value or f.get("severity") in ["CRITICAL", "HIGH"])
             border_left_col = "#DC2626" if is_issue else "#D97706"
             badge_cls = "badge-issue" if is_issue else "badge-review"
-            badge_label = "ISSUE" if is_issue else "REVIEW"
+            badge_label = "ISSUE" if is_issue else "REVIEW REQUIRED"
 
-            exp_name = f.get("expected_document") or f.get("document_type", "Statutory Document").replace('_', ' ').title()
-            up_name = f.get("uploaded_filename") or f.get("file", "document.pdf")
-            prob_text = f.get("problem", "The uploaded filename/category does not match the expected document.")
-            act_text = f.get("action", "Review document")
+            doc_name = f.get("document") or f.get("uploaded_filename") or f.get("file", "document.pdf")
+            exp_name = f.get("expected") or f.get("expected_document") or f.get("document_type", "Statutory Document").replace('_', ' ').title()
+            prob_text = f.get("finding") or f.get("problem", "The uploaded filename/category does not match the expected document.")
+            ev_text = f.get("evidence", "")
+            why_text = f.get("why_it_matters", "")
+            conf_text = f.get("confidence_or_limitation", "")
+            act_text = f.get("recommended_action") or f.get("action", "Review document")
+
+            # Format evidence snippet nicely
+            ev_snippet = f"<div style='margin-top: 4px; font-family: monospace; font-size: 0.82rem; background: #F1F5F9; padding: 4px 8px; border-radius: 4px; color: #0F172A;'>{ev_text}</div>" if ev_text else ""
+            why_snippet = f"<div style='margin-top: 4px; color: #475569;'>{why_text}</div>" if why_text else ""
+            conf_badge = f"<span style='font-size: 0.78rem; color: #64748B; font-style: italic;'>({conf_text})</span>" if conf_text else ""
 
             st.markdown(f"""
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-left: 5px solid {border_left_col}; padding: 14px 18px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <div style="font-size: 0.95rem; font-weight: 700; color: #0F172A;">
-                        <strong>Expected:</strong> {exp_name}
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-left: 5px solid {border_left_col}; padding: 16px 18px; border-radius: 8px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <div style="font-size: 0.96rem; font-weight: 700; color: #0F172A;">
+                        📄 <code>{doc_name}</code>
                     </div>
-                    <span class="badge {badge_cls}">{badge_label}</span>
+                    <div>
+                        <span class="badge {badge_cls}">{badge_label}</span>
+                        {conf_badge}
+                    </div>
                 </div>
-                <div style="display: grid; grid-template-columns: 90px 1fr; row-gap: 6px; font-size: 0.88rem; color: #334155;">
-                    <div><strong>Uploaded:</strong></div>
-                    <div><code>{up_name}</code></div>
+                <div style="display: grid; grid-template-columns: 130px 1fr; row-gap: 8px; font-size: 0.88rem; color: #334155;">
+                    <div><strong>Expected:</strong></div>
+                    <div>{exp_name}</div>
                     <div><strong>Finding:</strong></div>
-                    <div>{prob_text}</div>
+                    <div><span style="font-weight: 600; color: #0F172A;">{prob_text}</span></div>
+                    <div><strong>Evidence:</strong></div>
+                    <div>{ev_snippet}</div>
+                    <div><strong>Why it matters:</strong></div>
+                    <div>{why_snippet}</div>
                 </div>
-                <div style="margin-top: 10px; font-size: 0.85rem; color: #1E40AF; background: #F8FAFC; padding: 6px 12px; border-radius: 4px; border: 1px solid #E2E8F0;">
-                    💡 <strong>Action:</strong> {act_text}
+                <div style="margin-top: 12px; font-size: 0.86rem; color: #1E40AF; background: #EFF6FF; padding: 8px 12px; border-radius: 6px; border: 1px solid #BFDBFE;">
+                    💡 <strong>Recommended Action:</strong> {act_text}
                 </div>
             </div>
             """, unsafe_allow_html=True)

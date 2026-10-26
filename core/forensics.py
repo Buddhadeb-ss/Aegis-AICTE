@@ -13,7 +13,10 @@ import os
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz  # Fallback for older environments
 
 
 def compute_sha256(filepath_or_bytes) -> str:

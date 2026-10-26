@@ -60,3 +60,23 @@ def get_audit_events(
                 (limit,)
             )
         return [dict(r) for r in cursor.fetchall()]
+
+
+def get_application_audit_trail(
+    app_id: str,
+    limit: int = 100,
+    db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Retrieves all chronological audit events associated with an application (including its docs and clarifications)."""
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """
+            SELECT * FROM audit_events
+            WHERE entity_id = ?
+               OR (details_json IS NOT NULL AND json_extract(details_json, '$.application_id') = ?)
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (app_id, app_id, limit)
+        )
+        return [dict(r) for r in cursor.fetchall()]
